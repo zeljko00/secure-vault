@@ -1,0 +1,101 @@
+version: '3.9'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: secure-vault-db
+    env_file:
+      - ./database/.env
+    ports:
+      - "5432:5432"
+    volumes:
+      # PostgreSQL data persistence
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - secure-vault-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # Optional: Database migration service to handle schema changes and migrations
+  db_migration:
+    build:
+      context: ./secure-vault-backend
+      dockerfile: ./database-migration/Dockerfile
+    image: secure-vault-db-migration:local
+    container_name: secure-vault-db-migration
+    working_dir: /app
+    environment:
+      PYTHONDONTWRITEBYTECODE: "1"
+      PYTHONUNBUFFERED: "1"
+    env_file:
+      - ./database/database-migration/.env
+      - ./database/.env
+    volumes:
+      - ./secure-vault-backend:/app
+      - ./database/scripts/postgres_pre_migrate_init.sql:/db-scripts/postgres_pre_migrate_init.sql:ro
+      - ./database/scripts/postgres_post_migrate_init.sql:/db-scripts/postgres_post_migrate_init.sql:ro
+    command: >
+      sh -c "
+      PGPASSWORD=$$POSTGRES_PASSWORD psql -h postgres -U postgres -d postgres -v ON_ERROR_STOP=1 -v db_name=$$DB_NAME -v db_user=$$DB_MIGRATION_USER -v db_user_password=$$DB_MIGRATION_USER_PASSWORD -v app_user=$$DB_USER -f /db-scripts/postgres_pre_migrate_init.sql &&
+      DB_USER=$$DB_MIGRATION_USER DB_PASSWORD=$$DB_MIGRATION_USER_PASSWORD python manage.py migrate --noinput &&
+      PGPASSWORD=$$POSTGRES_PASSWORD psql -h postgres -U postgres -d $$DB_NAME -v ON_ERROR_STOP=1 -v db_name=$$DB_NAME -v db_user=$$DB_USER -v db_user_password=$$DB_USER_PASSWORD -f /db-scripts/postgres_post_migrate_init.sql
+      "
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - secure-vault-network
+    restart: "no"
+    profiles:
+      - database-migration
+
+  backend:
+    build:
+      context: ./secure-vault-backend
+      dockerfile: Dockerfile
+    image: secure-vault-backend:local
+    container_name: secure-vault-backend
+    # Optionally override the default command to run the Django server
+    command: python manage.py runserver 0.0.0.0:8000
+    env_file:
+      - ./secure-vault-backend/.env
+    ports:
+      - "8080:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - secure-vault-network
+    restart: unless-stopped
+
+  # Optional: pgAdmin for database management and visualization
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: secure-vault-db-console
+    env_file:
+      - ./database/.env
+    ports:
+      - "5431:80"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    networks:
+      - secure-vault-network
+    depends_on:
+      - postgres
+    restart: unless-stopped
+    profiles:
+      - dev
+
+volumes:
+  postgres_data:
+    driver: local
+  pgadmin_data:
+    driver: local
+
+networks:
+  secure-vault-network:
+    driver: bridge
