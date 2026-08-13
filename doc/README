@@ -1,0 +1,23 @@
+# Create python virtual environment 
+sudo apt install python3-venv
+python3 -m venv venv
+source venv/bin/activate
+
+# Install Django
+pip install django djangorestframework
+
+# Create Django project
+django-admin startproject <PROJECT_CONFIG_DIR_NAME> <PROJECT_SRC_DIR>
+cd <PROJECT_SRC_DIR>
+mkdir apps
+
+
+# Create Django app (Django project consists from apps)
+python manage.py startapp <APP_NAME>
+mv <APP_NAME> apps/<APP_NAME>
+
+# Create migrations based on models
+DB_NAME=secure_vault DB_USER='secure_vault_owner' DB_PASSWORD='secure_vault_owner_secret' DB_HOST=127.0.0.1 DB_PORT=5432 python manage.py makemigrations users user_secrets
+
+# Start container and run migrations
+docker-compose --profile database-migration up
