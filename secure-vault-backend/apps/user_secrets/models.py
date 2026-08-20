@@ -1,4 +1,5 @@
 from django.db import models
+import uuid
 
 class SecretType(models.TextChoices):
     PASSWORD = "password", "Password"
@@ -7,7 +8,7 @@ class SecretType(models.TextChoices):
     OTHER = "other", "Other"
 
 class Secret(models.Model):
-    id = models.AutoField(primary_key=True)
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     type = models.CharField(blank=False, choices=SecretType.choices, default=SecretType.OTHER, max_length=20)
     label = models.CharField(blank=False, null=False, max_length=100)
     value = models.BinaryField(blank=False, null=False)
@@ -19,7 +20,7 @@ class Secret(models.Model):
         return self.label
     
 class SharedSecret(models.Model):
-    id = models.AutoField(primary_key=True)
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     secret = models.ForeignKey(Secret, on_delete=models.CASCADE, related_name="shared_instances")
     sharing_with = models.ForeignKey('users.User', on_delete=models.CASCADE, related_name="received_secrets")
     sharing_expires_at = models.DateTimeField(blank=True, null=True)
@@ -38,10 +39,10 @@ class AccessLog(models.Model):
         abstract = True
         
 class HoneypotSecretAccessLog(AccessLog):
-    id = models.AutoField(primary_key=True)
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     secret = models.ForeignKey(Secret, on_delete=models.SET_NULL, null=True, blank=True)
     user = models.ForeignKey('users.User', on_delete=models.SET_NULL, null=True, blank=True)
     
 class SharedSecretAccessLog(AccessLog):
-    id = models.AutoField(primary_key=True)
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     secret = models.ForeignKey(SharedSecret, on_delete=models.CASCADE, null=False, blank=False)
