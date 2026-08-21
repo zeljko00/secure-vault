@@ -4,8 +4,14 @@ services:
       - "5432:5432"
 
   backend:
+    ports:
+      - "8000:8000"
     volumes:
       - ./secure-vault-backend:/app # bind mount for backend source code to enable live code reloading
+
+  frontend:
+    ports:
+      - "5173:5173"
 
   # Optional: pgAdmin for database management and visualization
   pgadmin:
@@ -23,7 +29,7 @@ services:
       - database
     restart: unless-stopped
     profiles:
-      - dev
+      - debugging
 
   # Optional: Database migration service to handle schema changes and migrations
   db_migration:
@@ -56,4 +62,4 @@ services:
       - secure-vault-network
     restart: "no"
     profiles:
-      - database-migration
+      - migration
