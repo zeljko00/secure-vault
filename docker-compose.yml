@@ -23,11 +23,11 @@ services:
     image: secure-vault-backend:local
     container_name: secure-vault-backend
     # Optionally override the default command to run the Django server
-    command: python manage.py runserver 0.0.0.0:8000
+    command: python manage.py runserver 0.0.0.0:80
     env_file:
       - ./secure-vault-backend/.env
     ports:
-      - "8080:8000"
+      - "8080:80"
     depends_on:
       database:
         condition: service_healthy
@@ -35,7 +35,7 @@ services:
       - secure-vault-network
     restart: unless-stopped
 
-   frontend:
+  frontend:
     build:
       context: ./secure-vault-frontend
       dockerfile: Dockerfile
@@ -49,6 +49,22 @@ services:
     env_file:
       - ./secure-vault-frontend/.env
     depends_on:
+      - backend
+    networks:
+      - secure-vault-network
+    restart: unless-stopped
+
+  proxy:
+    image: nginx:1.27-alpine
+    container_name: secure-vault-nginx
+    ports:
+      - "80:80"
+    env_file:
+      - ./nginx/.env
+    volumes:
+      - ./nginx/dev.conf:/etc/nginx/templates/default.conf.template:ro
+    depends_on:
+      - frontend
       - backend
     networks:
       - secure-vault-network
