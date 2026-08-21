@@ -1,7 +1,11 @@
 services:
+  database:
+    ports:
+      - "5432:5432"
+
   backend:
     volumes:
-      - ./secure-vault-backend:/app
+      - ./secure-vault-backend:/app # bind mount for backend source code to enable live code reloading
 
   # Optional: pgAdmin for database management and visualization
   pgadmin:
@@ -16,7 +20,7 @@ services:
     networks:
       - secure-vault-network
     depends_on:
-      - postgres
+      - database
     restart: unless-stopped
     profiles:
       - dev
@@ -46,7 +50,7 @@ services:
       PGPASSWORD=$$POSTGRES_PASSWORD psql -h postgres -U postgres -d $$DB_NAME -v ON_ERROR_STOP=1 -v db_name=$$DB_NAME -v db_user=$$DB_USER -v db_user_password=$$DB_USER_PASSWORD -f /db-scripts/postgres_post_migrate_init.sql
       "
     depends_on:
-      postgres:
+      database:
         condition: service_healthy
     networks:
       - secure-vault-network
