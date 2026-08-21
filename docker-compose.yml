@@ -35,6 +35,25 @@ services:
       - secure-vault-network
     restart: unless-stopped
 
+   frontend:
+    build:
+      context: ./secure-vault-frontend
+      dockerfile: Dockerfile
+    image: secure-vault-frontend:local
+    container_name: secure-vault-frontend
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./secure-vault-frontend:/app
+      - /app/node_modules
+    env_file:
+      - ./secure-vault-frontend/.env
+    depends_on:
+      - backend
+    networks:
+      - secure-vault-network
+    restart: unless-stopped
+
 volumes:
   postgres_data:
     driver: local
