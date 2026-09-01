@@ -3,7 +3,7 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import axios from 'axios'
-import { Lock, UserPlus } from 'lucide-react'
+import { AlertTriangle, Check, Copy, Lock, UserPlus } from 'lucide-react'
 import { Link, useNavigate } from 'react-router-dom'
 import { api } from '@/lib/api'
 import {
@@ -16,7 +16,7 @@ import {
 import { cn } from '@/lib/utils'
 import type { User } from '@/types'
 
-const MASTER_PASSWORD_POPUP_DURATION_S = 15
+const MASTER_PASSWORD_POPUP_DURATION_S = 20
 
 const schema = z
   .object({
@@ -38,24 +38,41 @@ export function RegisterPage() {
   const [isGeneratingKeys, setIsGeneratingKeys] = useState(false)
   const [masterPassword, setMasterPassword] = useState<string | null>(null)
   const [secondsLeft, setSecondsLeft] = useState(0)
+  const [copyStatus, setCopyStatus] = useState<'idle' | 'success' | 'error'>('idle')
 
   useEffect(() => {
-    if (masterPassword) {
-      setSecondsLeft(MASTER_PASSWORD_POPUP_DURATION_S)
-      const expiresAt = Date.now() + MASTER_PASSWORD_POPUP_DURATION_S * 1000
-      const timer = window.setInterval(() => {
-        const remaining = Math.max(0, Math.ceil((expiresAt - Date.now()) / 1000))
-        setSecondsLeft(remaining)
-        if (remaining === 0) {
+    if (!masterPassword) {
+      return
+    }
+
+    setCopyStatus('idle')
+    setSecondsLeft(MASTER_PASSWORD_POPUP_DURATION_S)
+    const expiresAt = Date.now() + MASTER_PASSWORD_POPUP_DURATION_S * 1000
+    const timer = window.setInterval(() => {
+      const remaining = Math.max(0, Math.ceil((expiresAt - Date.now()) / 1000))
+      setSecondsLeft(remaining)
+      if (remaining === 0) {
         window.clearInterval(timer)
         setMasterPassword(null)
         navigate('/login')
-        }
-      }, 250)
+      }
+    }, 250)
 
-      return () => window.clearInterval(timer)
-    }
+    return () => window.clearInterval(timer)
   }, [masterPassword, navigate])
+
+  const handleCopyMasterPassword = async () => {
+    if (!masterPassword) {
+      return
+    }
+
+    try {
+      await navigator.clipboard.writeText(masterPassword)
+      setCopyStatus('success')
+    } catch {
+      setCopyStatus('error')
+    }
+  }
 
   const {
     register,
@@ -104,12 +121,24 @@ export function RegisterPage() {
       {masterPassword && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
           <div className="w-full max-w-lg glass border border-[var(--color-warning)] p-6">
-            <h2 className="text-lg font-semibold tracking-tight text-[var(--color-text)]">Master Password</h2>
             <p className="mt-2 text-sm text-[var(--color-text-muted)]">
-              Registration succeeded! Save this master password to encrypt your secrets later.
+              Registration succeeded! Save this <span className="font-semibold text-[var(--color-warning)]">master password</span> to encrypt your secrets later.
             </p>
-            <div className="mt-4 rounded-lg border border-[var(--color-warning)]/40 bg-[var(--color-surface)] p-3 font-mono text-sm break-all text-[var(--color-accent)]">
+            <div className="mt-4 relative rounded-lg border border-[var(--color-warning)]/40 bg-[var(--color-surface)] p-3 pr-14 font-mono text-sm break-all text-[var(--color-accent)]">
               {masterPassword}
+              <button
+                type="button"
+                onClick={handleCopyMasterPassword}
+                aria-label="Copy master password"
+                title="Copy master password"
+                className="absolute right-2 top-1/2 inline-flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full border border-[var(--color-warning)]/60 bg-[var(--color-warning)]/10 text-[var(--color-warning)] transition-all duration-200 hover:bg-[var(--color-warning)]/20 hover:shadow-[0_0_14px_rgba(245,158,11,0.35)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-warning)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--color-surface)]"
+              >
+                <Copy size={15} />
+              </button>
+            </div>
+            <div className="mt-2 flex min-h-4 items-center gap-2">
+              {copyStatus === 'success' && <Check size={14} className="text-[var(--color-accent)]" aria-label="Copied" />}
+              {copyStatus === 'error' && <AlertTriangle size={14} className="text-[var(--color-danger)]" aria-label="Clipboard blocked by browser" />}
             </div>
             <p className="mt-3 text-xs text-[var(--color-warning)]">
               This is shown only once and will be hidden in {secondsLeft}s.
