@@ -33,7 +33,7 @@ class UserSerializer(serializers.ModelSerializer):
 
         return User.objects.create(
             **validated_data,
-            role=UserRole.GUEST,
+            role=UserRole.DEVELOPER,
             password_hash=sha256(password.encode()),
         )
 

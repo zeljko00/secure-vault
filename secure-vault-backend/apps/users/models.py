@@ -5,7 +5,6 @@ class UserRole(models.TextChoices):
     ADMIN = "admin", "Admin"
     DEVELOPER = "dev", "Developer"
     TEAM_LEAD = "tl", "Team Lead"
-    GUEST = "guest", "Guest"
 
 
 class Team(models.Model):
@@ -21,7 +20,7 @@ class User(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     username = models.CharField(unique=True, blank=False, null=False, max_length=150)
     role = models.CharField(
-        blank=False, choices=UserRole.choices, default=UserRole.GUEST, max_length=20
+        blank=False, choices=UserRole.choices, default=UserRole.DEVELOPER, max_length=20
     )
     email = models.EmailField(unique=True, blank=False, null=False)
     password_hash = models.CharField(blank=False, null=False, max_length=128)
