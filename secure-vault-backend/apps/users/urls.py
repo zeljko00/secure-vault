@@ -2,6 +2,7 @@ from django.urls import path
 
 from apps.users.views import (
     UsersView,
+    UserLoginView,
     TeamsView,
     UserView,
     UserPasswordView,
@@ -14,6 +15,7 @@ from apps.users.views import (
 
 urlpatterns = [
     path("", UsersView.as_view(), name="users"),
+    path("login/", UserLoginView.as_view(), name="user-login"),
     path("teams/", TeamsView.as_view(), name="users-teams"),
     path("<uuid:id>/", UserView.as_view(), name="user"),
     path("<uuid:id>/role/", UserRoleView.as_view(), name="user-role"),
