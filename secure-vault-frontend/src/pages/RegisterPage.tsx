@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -6,9 +6,17 @@ import axios from 'axios'
 import { Lock, UserPlus } from 'lucide-react'
 import { Link, useNavigate } from 'react-router-dom'
 import { api } from '@/lib/api'
-import { generateKeyPair, exportPublicKeyPEM } from '@/lib/crypto'
+import {
+  generateKeyPair,
+  exportPublicKeyToPEM,
+  encryptPrivateKeyForStorage,
+  storeEncryptedPrivateKey,
+  generateMasterPassword,
+} from '@/lib/crypto'
 import { cn } from '@/lib/utils'
-import { log } from '@/lib/debug'
+import type { User } from '@/types'
+
+const MASTER_PASSWORD_POPUP_DURATION_S = 15
 
 const schema = z
   .object({
@@ -28,6 +36,26 @@ export function RegisterPage() {
   const navigate = useNavigate()
   const [apiError, setApiError] = useState<string | null>(null)
   const [isGeneratingKeys, setIsGeneratingKeys] = useState(false)
+  const [masterPassword, setMasterPassword] = useState<string | null>(null)
+  const [secondsLeft, setSecondsLeft] = useState(0)
+
+  useEffect(() => {
+    if (masterPassword) {
+      setSecondsLeft(MASTER_PASSWORD_POPUP_DURATION_S)
+      const expiresAt = Date.now() + MASTER_PASSWORD_POPUP_DURATION_S * 1000
+      const timer = window.setInterval(() => {
+        const remaining = Math.max(0, Math.ceil((expiresAt - Date.now()) / 1000))
+        setSecondsLeft(remaining)
+        if (remaining === 0) {
+        window.clearInterval(timer)
+        setMasterPassword(null)
+        navigate('/login')
+        }
+      }, 250)
+
+      return () => window.clearInterval(timer)
+    }
+  }, [masterPassword, navigate])
 
   const {
     register,
@@ -41,7 +69,7 @@ export function RegisterPage() {
 
     try {
       const keyPair = await generateKeyPair()
-      const pubKey = await exportPublicKeyPEM(keyPair.publicKey)
+      const pubKey = await exportPublicKeyToPEM(keyPair.publicKey)
 
       const user = {
         username: data.username,
@@ -50,10 +78,11 @@ export function RegisterPage() {
         pub_key: pubKey,
       }
 
-      log('Registering user:', user)
-      await api.post('/users/', user)
-
-      navigate('/login')
+      const response = await api.post<User>('/users/', user)
+      const generatedMasterPassword = generateMasterPassword()
+      const encryptedPrivateKey = await encryptPrivateKeyForStorage(keyPair.privateKey, generatedMasterPassword)
+      await storeEncryptedPrivateKey(response.data.id, encryptedPrivateKey)
+      setMasterPassword(generatedMasterPassword)
     } catch (err: unknown) {
       if (axios.isAxiosError(err) && err.response) {
         const detail = err.response.data?.detail
@@ -65,12 +94,30 @@ export function RegisterPage() {
         setApiError('Network error — please try again')
       }
     } finally {
+
       setIsGeneratingKeys(false)
     }
   }
 
   return (
     <div className="min-h-screen flex items-center justify-center px-4">
+      {masterPassword && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
+          <div className="w-full max-w-lg glass border border-[var(--color-warning)] p-6">
+            <h2 className="text-lg font-semibold tracking-tight text-[var(--color-text)]">Master Password</h2>
+            <p className="mt-2 text-sm text-[var(--color-text-muted)]">
+              Registration succeeded! Save this master password to encrypt your secrets later.
+            </p>
+            <div className="mt-4 rounded-lg border border-[var(--color-warning)]/40 bg-[var(--color-surface)] p-3 font-mono text-sm break-all text-[var(--color-accent)]">
+              {masterPassword}
+            </div>
+            <p className="mt-3 text-xs text-[var(--color-warning)]">
+              This is shown only once and will be hidden in {secondsLeft}s.
+            </p>
+          </div>
+        </div>
+      )}
+
       <div className="w-full max-w-sm glass p-8 flex flex-col gap-6">
         <div className="text-center flex flex-col items-center gap-3">
           <span className="text-[var(--color-primary)] drop-shadow-[0_0_12px_var(--color-primary)]">
