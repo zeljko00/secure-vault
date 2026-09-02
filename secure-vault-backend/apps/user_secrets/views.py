@@ -5,6 +5,7 @@ from rest_framework import status
 
 from apps.user_secrets.models import Secret, SharedSecret
 from apps.user_secrets.serializers import SecretSerializer, SharedSecretSerializer
+from apps.users.models import User
 
 
 class SecretsView(APIView):
@@ -16,8 +17,13 @@ class SecretsView(APIView):
     def post(self, request):
         serializer = SecretSerializer(data=request.data)
         if serializer.is_valid():
-            serializer.save(owner=request.user)     # TODO: take user from session
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
+            # TODO: take user from session
+            user = request.query_params.get("user")
+            if user:
+                user = get_object_or_404(User, id=user)
+                serializer.save(owner=user)     
+                return Response(serializer.data, status=status.HTTP_201_CREATED)
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
