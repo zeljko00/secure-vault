@@ -23,7 +23,10 @@ DB_NAME=secure_vault DB_USER='secure_vault_owner' DB_PASSWORD='secure_vault_owne
 docker-compose --profile database-migration up
 
 # Local HTTPS setup for frontend + backend behind nginx
-# 1) Generate self-signed certificate for localhost
+# 1) Generate self-signed certificate.
+# By default SAN includes localhost, 127.0.0.1, current hostname and primary LAN IP.
+# Optional overrides:
+#   EXTRA_DNS=securevault.local EXTRA_IPS=192.168.100.50 ./scripts/generate-local-tls.sh
 chmod +x scripts/generate-local-tls.sh
 ./scripts/generate-local-tls.sh
 
@@ -32,3 +35,7 @@ docker compose --profile dev -f docker-compose.yml -f docker-compose.dev.yml up 
 
 # 3) Open app over HTTPS
 # https://localhost
+# or from another machine on same network:
+# https://localhost
+# https://<your-lan-ip>
+# https://secure-vault  Requres adding "secure-vault" to /etc/hosts on client machine:
