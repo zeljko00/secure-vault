@@ -3,7 +3,7 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import axios from 'axios'
-import { Code2, Eye, EyeOff, FileQuestion, KeyRound, Lock, LogOut, Pencil, Plus, ShieldCheck, X } from 'lucide-react'
+import { Code2, Eye, EyeOff, FileQuestion, KeyRound, Lock, LogOut, Pencil, Plus, ShieldCheck, Trash2, X } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { api } from '@/lib/api'
 import { decryptAESGCM, encryptAESGCM, deriveKeyFromPassword, loadEncryptedPrivateKey, storeEncryptedPrivateKey } from '@/lib/crypto'
@@ -51,6 +51,8 @@ export function HomePage() {
   const [revealError, setRevealError] = useState<string | null>(null)
   const [editingSecretId, setEditingSecretId] = useState<string | null>(null)
   const [isPreparingEdit, setIsPreparingEdit] = useState(false)
+  const [deletingSecretId, setDeletingSecretId] = useState<string | null>(null)
+  const [pendingDeleteSecret, setPendingDeleteSecret] = useState<Secret | null>(null)
   const [hasIndexedDbBackup, setHasIndexedDbBackup] = useState<boolean | null>(null)
   const [backupImportStatus, setBackupImportStatus] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
@@ -218,6 +220,51 @@ export function HomePage() {
     reset({ label: '', type: 'password', value: '' })
   }
 
+  const handleDeleteSecret = async () => {
+    if (!user) {
+      setApiError('Please sign in again')
+      return
+    }
+
+    if (!pendingDeleteSecret) {
+      return
+    }
+
+    const secret = pendingDeleteSecret
+
+    setApiError(null)
+    setDeletingSecretId(secret.id)
+
+    try {
+      await api.delete(`/secrets/${secret.id}/delete/`, {
+        params: { user: user.id },
+      })
+
+      setSecrets((prev) => prev.filter((item) => item.id !== secret.id))
+      setRevealedSecrets((prev) => {
+        const next = { ...prev }
+        delete next[secret.id]
+        return next
+      })
+
+      if (editingSecretId === secret.id) {
+        setEditingSecretId(null)
+        reset({ label: '', type: 'password', value: '' })
+      }
+
+      setPendingDeleteSecret(null)
+    } catch (err: unknown) {
+      if (axios.isAxiosError(err) && err.response) {
+        const detail = err.response.data?.detail
+        setApiError(detail ?? 'Failed to delete secret')
+      } else {
+        setApiError('Network error — please try again')
+      }
+    } finally {
+      setDeletingSecretId(null)
+    }
+  }
+
   const handleRevealSecret = async (secret: Secret) => {
     if (revealedSecrets[secret.id]) {
       setRevealedSecrets((prev) => {
@@ -252,6 +299,18 @@ export function HomePage() {
     } finally {
       setRevealingSecretId(null)
     }
+  }
+
+  const handleOpenDeleteModal = (secret: Secret) => {
+    setApiError(null)
+    setPendingDeleteSecret(secret)
+  }
+
+  const handleCloseDeleteModal = () => {
+    if (deletingSecretId) {
+      return
+    }
+    setPendingDeleteSecret(null)
   }
 
   const handleMasterPasswordSubmit = async (e: React.FormEvent) => {
@@ -341,6 +400,46 @@ export function HomePage() {
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-slate-100 px-4 py-8 text-slate-900">
+      {pendingDeleteSecret && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
+          <div className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-6 shadow-lg">
+            <div className="mb-2 flex items-center justify-between gap-3">
+              <h2 className="text-lg font-semibold text-slate-900">Delete Secret</h2>
+              <button
+                type="button"
+                onClick={handleCloseDeleteModal}
+                disabled={Boolean(deletingSecretId)}
+                className="text-slate-500 hover:text-slate-700 disabled:opacity-50"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <p className="text-sm text-slate-600">
+              Delete <span className="font-semibold text-slate-800">{pendingDeleteSecret.label}</span>? This action cannot be undone.
+            </p>
+            <div className="mt-4 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={handleCloseDeleteModal}
+                disabled={Boolean(deletingSecretId)}
+                className="inline-flex items-center justify-center rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleDeleteSecret()}
+                disabled={Boolean(deletingSecretId)}
+                className="inline-flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700 transition-colors hover:bg-red-100 disabled:opacity-60"
+              >
+                <Trash2 size={14} />
+                {deletingSecretId ? 'Deleting...' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showMasterPasswordModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
           <div className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-6 shadow-lg">
@@ -578,10 +677,20 @@ export function HomePage() {
                         <button
                           type="button"
                           onClick={() => void handleStartEdit(secret)}
+                          disabled={deletingSecretId === secret.id}
                           className="inline-flex items-center gap-1 rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-[11px] font-medium text-slate-700 transition-colors hover:bg-slate-100"
                         >
                           <Pencil size={12} />
                           Edit
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleOpenDeleteModal(secret)}
+                          disabled={deletingSecretId === secret.id}
+                          className="inline-flex items-center gap-1 rounded-lg border border-red-200 bg-red-50 px-2.5 py-1 text-[11px] font-medium text-red-700 transition-colors hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          <Trash2 size={12} />
+                          {deletingSecretId === secret.id ? 'Deleting...' : 'Delete'}
                         </button>
                       </div>
                     </div>
