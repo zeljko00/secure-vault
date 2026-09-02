@@ -1,2 +1,4 @@
 **/__pycache__/
 secure-vault-frontend/node_modules/
+nginx/certs/*.crt
+nginx/certs/*.key
