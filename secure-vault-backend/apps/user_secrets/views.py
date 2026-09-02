@@ -8,6 +8,22 @@ from apps.user_secrets.serializers import SecretSerializer, SharedSecretSerializ
 from apps.users.models import User
 
 
+class MySecretsView(APIView):
+    def get(self, request):
+        # Temporary user lookup by query param until auth/session wiring is in place.
+        user_id = request.query_params.get("user")
+        if not user_id:
+            return Response(
+                {"detail": "user query parameter is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        user = get_object_or_404(User, id=user_id)
+        secrets = Secret.objects.filter(owner=user)
+        serializer = SecretSerializer(secrets, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+
 class SecretsView(APIView):
     def get(self, request):
         secrets = Secret.objects.all()
