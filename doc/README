@@ -21,3 +21,14 @@ DB_NAME=secure_vault DB_USER='secure_vault_owner' DB_PASSWORD='secure_vault_owne
 
 # Start container and run migrations
 docker-compose --profile database-migration up
+
+# Local HTTPS setup for frontend + backend behind nginx
+# 1) Generate self-signed certificate for localhost
+chmod +x scripts/generate-local-tls.sh
+./scripts/generate-local-tls.sh
+
+# 2) Start services with nginx TLS termination
+docker compose --profile dev -f docker-compose.yml -f docker-compose.dev.yml up --build
+
+# 3) Open app over HTTPS
+# https://localhost
