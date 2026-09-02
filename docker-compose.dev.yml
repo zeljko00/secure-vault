@@ -51,9 +51,9 @@ services:
       - ./database/scripts/postgres_post_migrate_init.sql:/db-scripts/postgres_post_migrate_init.sql:ro
     command: >
       sh -c "
-      PGPASSWORD=$$POSTGRES_PASSWORD psql -h postgres -U postgres -d postgres -v ON_ERROR_STOP=1 -v db_name=$$DB_NAME -v db_user=$$DB_MIGRATION_USER -v db_user_password=$$DB_MIGRATION_USER_PASSWORD -v app_user=$$DB_USER -f /db-scripts/postgres_pre_migrate_init.sql &&
+      PGPASSWORD=$$POSTGRES_PASSWORD psql -h database -U postgres -d postgres -v ON_ERROR_STOP=1 -v db_name=$$DB_NAME -v db_user=$$DB_MIGRATION_USER -v db_user_password=$$DB_MIGRATION_USER_PASSWORD -v app_user=$$DB_USER -f /db-scripts/postgres_pre_migrate_init.sql &&
       DB_USER=$$DB_MIGRATION_USER DB_PASSWORD=$$DB_MIGRATION_USER_PASSWORD python manage.py migrate --noinput &&
-      PGPASSWORD=$$POSTGRES_PASSWORD psql -h postgres -U postgres -d $$DB_NAME -v ON_ERROR_STOP=1 -v db_name=$$DB_NAME -v db_user=$$DB_USER -v db_user_password=$$DB_USER_PASSWORD -f /db-scripts/postgres_post_migrate_init.sql
+      PGPASSWORD=$$POSTGRES_PASSWORD psql -h database -U postgres -d $$DB_NAME -v ON_ERROR_STOP=1 -v db_name=$$DB_NAME -v db_user=$$DB_USER -v db_user_password=$$DB_USER_PASSWORD -f /db-scripts/postgres_post_migrate_init.sql
       "
     depends_on:
       database:
