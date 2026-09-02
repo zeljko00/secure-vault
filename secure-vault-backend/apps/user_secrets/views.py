@@ -46,7 +46,8 @@ class SecretsView(APIView):
 class SecretUpdateView(APIView):
     def put(self, request, id):
         secret = get_object_or_404(Secret, id=id)
-        if secret.owner != request.user:    # TODO: take user from session
+        request_user_id = request.query_params.get("user")
+        if str(secret.owner.id) != str(request_user_id):    # TODO: take user from session
             return Response(status=status.HTTP_403_FORBIDDEN)
         serializer = SecretSerializer(secret, data=request.data, partial=True)
         if serializer.is_valid():
