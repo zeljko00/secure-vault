@@ -59,7 +59,9 @@ class SecretUpdateView(APIView):
 class SecretDeleteView(APIView):
     def delete(self, request, id):
         secret = get_object_or_404(Secret, id=id)
-        if secret.owner != request.user:    # TODO: take user from session
+        print(secret)
+        request_user_id = request.query_params.get("user")
+        if str(secret.owner.id) != str(request_user_id):    # TODO: take user from session
             return Response(status=status.HTTP_403_FORBIDDEN)
         secret.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
@@ -68,7 +70,8 @@ class SecretDeleteView(APIView):
 class ShareSecretView(APIView):
     def post(self, request, id):
         secret = get_object_or_404(Secret, id=id)
-        if secret.owner != request.user:    # TODO: take user from session
+        request_user_id = request.query_params.get("user")
+        if str(secret.owner.id) != str(request_user_id):    # TODO: take user from session
             return Response(status=status.HTTP_403_FORBIDDEN)
         serializer = SharedSecretSerializer(data=request.data)
         if serializer.is_valid():
