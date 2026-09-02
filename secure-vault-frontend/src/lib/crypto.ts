@@ -5,7 +5,6 @@ const DEC = new TextDecoder()
 
 export type EncryptedPrivateKeyBlob = {
   ciphertext: string
-  iv: string
   salt: string
 }
 
@@ -35,6 +34,21 @@ export async function exportPublicKeyToPEM(publicKey: CryptoKey): Promise<string
   const base64 = bufToBase64(spki)
   // split into lines of 64 characters and wrap with PEM header/footer
   return `-----BEGIN PUBLIC KEY-----\n${base64.match(/.{1,64}/g)!.join('\n')}\n-----END PUBLIC KEY-----`
+}
+
+export async function importPublicKeyFromPEM(pem: string): Promise<CryptoKey> {
+  const base64 = pem
+    .replace('-----BEGIN PUBLIC KEY-----', '')
+    .replace('-----END PUBLIC KEY-----', '')
+    .replace(/\s+/g, '')
+  const spki = toArrayBuffer(base64ToUint8Array(base64))
+  return window.crypto.subtle.importKey(
+    'spki',
+    spki,
+    { name: 'RSA-OAEP', hash: 'SHA-256' },
+    true,
+    ['encrypt'],
+  )
 }
 
 export async function exportPrivateKeyToPEM(privateKey: CryptoKey): Promise<string> {

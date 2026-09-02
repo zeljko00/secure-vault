@@ -1,4 +1,3 @@
-// ── User & Auth ──────────────────────────────────────────────
 export type UserRole = 'admin' | 'tl' | 'dev' | 'guest'
 
 export interface User {
@@ -16,7 +15,6 @@ export interface Team {
   description?: string
 }
 
-// ── Secrets ──────────────────────────────────────────────────
 export type SecretType = 'password' | 'api_key' | 'certificate' | 'other'
 
 export interface Secret {
@@ -25,7 +23,7 @@ export interface Secret {
   label: string
   /** base64-encoded encrypted blob */
   value: string
-  marker?: string
+  iv?: string
   owner: User
 }
 
@@ -38,7 +36,6 @@ export interface SharedSecret {
   sharing_content_id: string
 }
 
-// ── Audit ────────────────────────────────────────────────────
 export interface AuditEntry {
   id: string
   timestamp: string

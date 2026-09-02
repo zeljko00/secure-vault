@@ -1,6 +1,8 @@
 import { create } from 'zustand'
 import type { User } from '@/types'
 
+const STORAGE_KEY = '_sv_auth_user'
+
 interface AuthState {
   user: User | null
   /** In-memory AES-GCM key derived from master password — never persisted */
@@ -16,16 +18,36 @@ interface AuthState {
   logout: () => void
 }
 
+// Restore user from localStorage on mount
+function loadPersistedUser(): User | null {
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY)
+    return stored ? JSON.parse(stored) : null
+  } catch {
+    return null
+  }
+}
+
 export const useAuthStore = create<AuthState>((set) => ({
-  user: null,
+  user: loadPersistedUser(),
   masterKey: null,
   privateKey: null,
   mfaPending: false,
 
-  setUser:       (user)       => set({ user }),
+  setUser: (user) => {
+    if (user) {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(user))
+    } else {
+      localStorage.removeItem(STORAGE_KEY)
+    }
+    set({ user })
+  },
   setMasterKey:  (masterKey)  => set({ masterKey }),
   setPrivateKey: (privateKey) => set({ privateKey }),
   setMfaPending: (mfaPending) => set({ mfaPending }),
 
-  logout: () => set({ user: null, masterKey: null, privateKey: null, mfaPending: false }),
+  logout: () => {
+    localStorage.removeItem(STORAGE_KEY)
+    set({ user: null, masterKey: null, privateKey: null, mfaPending: false })
+  },
 }))

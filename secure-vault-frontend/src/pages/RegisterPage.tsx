@@ -6,6 +6,7 @@ import axios from 'axios'
 import { AlertTriangle, Check, Copy, Lock, UserPlus } from 'lucide-react'
 import { Link, useNavigate } from 'react-router-dom'
 import { api } from '@/lib/api'
+import { useAuthStore } from '@/stores/authStore'
 import {
   generateKeyPair,
   exportPublicKeyToPEM,
@@ -32,11 +33,35 @@ const schema = z
 
 type FormValues = z.infer<typeof schema>
 
+type PrivateKeyBackupFile = {
+  version: number
+  createdAt: string
+  encryptedPrivateKey: string
+  salt: string
+}
+
+function downloadPrivateKeyBackup(payload: PrivateKeyBackupFile): void {
+  const fileName = `securevault-user-key.json`
+  const json = JSON.stringify(payload, null, 2)
+  const blob = new Blob([json], { type: 'application/json' })
+  const objectUrl = URL.createObjectURL(blob)
+  const anchor = document.createElement('a')
+  anchor.href = objectUrl
+  anchor.download = fileName
+  document.body.appendChild(anchor)
+  anchor.click()
+  document.body.removeChild(anchor)
+
+  window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60000)
+}
+
 export function RegisterPage() {
   const navigate = useNavigate()
+  const { setUser, setMfaPending } = useAuthStore()
   const [apiError, setApiError] = useState<string | null>(null)
   const [isGeneratingKeys, setIsGeneratingKeys] = useState(false)
   const [masterPassword, setMasterPassword] = useState<string | null>(null)
+  const [privateKeyBackup, setPrivateKeyBackup] = useState<PrivateKeyBackupFile | null>(null)
   const [secondsLeft, setSecondsLeft] = useState(0)
   const [copyStatus, setCopyStatus] = useState<'idle' | 'success' | 'error'>('idle')
 
@@ -54,7 +79,7 @@ export function RegisterPage() {
       if (remaining === 0) {
         window.clearInterval(timer)
         setMasterPassword(null)
-        navigate('/login')
+        navigate('/')
       }
     }, 250)
 
@@ -72,6 +97,13 @@ export function RegisterPage() {
     } catch {
       setCopyStatus('error')
     }
+  }
+
+  const handleDownloadBackup = () => {
+    if (!privateKeyBackup) {
+      return
+    }
+    downloadPrivateKeyBackup(privateKeyBackup)
   }
 
   const {
@@ -96,9 +128,20 @@ export function RegisterPage() {
       }
 
       const response = await api.post<User>('/users/', user)
+      setUser(response.data)
+      setMfaPending(false)
       const generatedMasterPassword = generateMasterPassword()
       const encryptedPrivateKey = await encryptPrivateKeyForStorage(keyPair.privateKey, generatedMasterPassword)
       await storeEncryptedPrivateKey(response.data.id, encryptedPrivateKey)
+
+      const backupPayload: PrivateKeyBackupFile = {
+        version: 1,
+        createdAt: new Date().toISOString(),
+        encryptedPrivateKey: encryptedPrivateKey.ciphertext,
+        salt: encryptedPrivateKey.salt,
+      }
+      setPrivateKeyBackup(backupPayload)
+      
       setMasterPassword(generatedMasterPassword)
     } catch (err: unknown) {
       if (axios.isAxiosError(err) && err.response) {
@@ -121,11 +164,11 @@ export function RegisterPage() {
       {masterPassword && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
           <div className="w-full max-w-lg glass border border-[var(--color-warning)] p-6">
-            <p className="mt-2 text-sm text-[var(--color-text-muted)]">
-              Registration succeeded! Save this <span className="font-semibold text-[var(--color-warning)]">master password</span> to encrypt your secrets later.
+            <p className="mt-2 text-sm text-[var(--color-text-muted)] text-center">
+              Save <span className="font-semibold text-[var(--color-warning)]">master password and key</span> to encrypt your secrets later.
             </p>
-            <div className="mt-4 relative rounded-lg border border-[var(--color-warning)]/40 bg-[var(--color-surface)] p-3 pr-14 font-mono text-sm break-all text-[var(--color-accent)]">
-              {masterPassword}
+            <div className="mt-4 relative min-h-14 w-full rounded-lg border border-[var(--color-warning)]/40 bg-[var(--color-surface)] px-14 py-2 text-center font-mono text-sm break-all text-[var(--color-accent)]">
+              <span className="block w-full text-center">{masterPassword}</span>
               <button
                 type="button"
                 onClick={handleCopyMasterPassword}
@@ -136,9 +179,18 @@ export function RegisterPage() {
                 <Copy size={15} />
               </button>
             </div>
-            <div className="mt-2 flex min-h-4 items-center gap-2">
+            <div className="mt-3 flex items-center justify-center gap-2">
               {copyStatus === 'success' && <Check size={14} className="text-[var(--color-accent)]" aria-label="Copied" />}
               {copyStatus === 'error' && <AlertTriangle size={14} className="text-[var(--color-danger)]" aria-label="Clipboard blocked by browser" />}
+            </div>
+            <div className="mt-3 flex justify-center">
+              <button
+                type="button"
+                onClick={handleDownloadBackup}
+                className="rounded-lg border border-[var(--color-primary)]/60 bg-[var(--color-primary)]/10 px-3 py-2 text-xs font-medium text-[var(--color-primary)] transition-all hover:bg-[var(--color-primary)]/20 hover:shadow-[0_0_14px_rgba(0,212,255,0.3)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)]"
+              >
+                Download key backup (.json)
+              </button>
             </div>
             <p className="mt-3 text-xs text-[var(--color-warning)]">
               This is shown only once and will be hidden in {secondsLeft}s.
@@ -208,7 +260,7 @@ export function RegisterPage() {
               'disabled:opacity-50 disabled:cursor-not-allowed',
             )}
           >
-            {isGeneratingKeys ? 'Generating key pair…' : isSubmitting ? 'Creating account…' : 'Register'}
+            {isGeneratingKeys ? 'Generating crypto material…' : isSubmitting ? 'Creating account…' : 'Register'}
           </button>
 
           {apiError && (

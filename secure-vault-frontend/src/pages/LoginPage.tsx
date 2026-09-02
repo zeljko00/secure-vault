@@ -8,6 +8,8 @@ import { Link, useNavigate } from 'react-router-dom'
 import { api } from '@/lib/api'
 import { useAuthStore } from '@/stores/authStore'
 import { cn } from '@/lib/utils'
+import type { User } from '@/types'
+import { log } from '@/lib/debug'
 
 const schema = z.object({
   username: z.string().min(1, 'Required'),
@@ -29,13 +31,14 @@ export function LoginPage() {
   const onSubmit = async (data: FormValues) => {
     setApiError(null)
     try {
-      const res = await api.post('/users/login/', data)
-      setUser(res.data.user)
-      setMfaPending(true)
-      navigate('/login/mfa')
+      const res = await api.post<User>('/users/login/', data)
+      log('Login successful, user:', res.data)
+      setUser(res.data)
+      setMfaPending(false)
+      navigate('/')
     } catch (err: unknown) {
       if (axios.isAxiosError(err) && err.response) {
-        setApiError(err.response.data?.detail ?? 'Invalid username or password')
+        setApiError(err.response.data?.detail ?? err.response.data?.details ?? 'Invalid username or password')
       } else {
         setApiError('Network error — please try again')
       }
