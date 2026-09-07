@@ -5,6 +5,7 @@ export interface User {
   username: string
   email: string
   role: UserRole
+  teams?: Team[]
   pub_key: string
   join_timestamp: string
 }
@@ -33,7 +34,6 @@ export interface SharedSecret {
   sharing_with: User
   sharing_expires_at?: string
   sharing_revoked: boolean
-  sharing_content_id: string
 }
 
 export interface AuditEntry {

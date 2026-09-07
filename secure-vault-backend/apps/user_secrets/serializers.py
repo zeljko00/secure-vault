@@ -31,5 +31,5 @@ class SecretSerializer(serializers.ModelSerializer):
 class SharedSecretSerializer(serializers.ModelSerializer):
     class Meta:
         model = SharedSecret
-        fields = ["id", "secret", "sharing_with", "sharing_expires_at", "sharing_revoked", "sharing_content_id"]
+        fields = ["id", "secret", "sharing_with", "sharing_expires_at", "sharing_revoked"]
         read_only_fields = ["id", "secret", "sharing_revoked"]

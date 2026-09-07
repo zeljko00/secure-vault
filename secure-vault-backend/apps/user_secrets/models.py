@@ -26,7 +26,6 @@ class SharedSecret(models.Model):
     sharing_with = models.ForeignKey('users.User', on_delete=models.CASCADE, related_name="received_secrets")
     sharing_expires_at = models.DateTimeField(blank=True, null=True)
     sharing_revoked = models.BooleanField(default=False)
-    sharing_content_id = models.CharField(blank=False, null=False, max_length=256)
 
     def __str__(self):
         return f"{self.secret.owner.username} is sharing {self.secret.label} with {self.sharing_with.username}"

@@ -3,13 +3,13 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import axios from 'axios'
-import { Code2, Eye, EyeOff, FileQuestion, KeyRound, Lock, LogOut, Pencil, Plus, ShieldCheck, Trash2, X } from 'lucide-react'
+import { Code2, Eye, EyeOff, FileQuestion, KeyRound, Lock, LogOut, Pencil, Plus, Send, ShieldCheck, Trash2, Users, X } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { api } from '@/lib/api'
 import { decryptAESGCM, encryptAESGCM, deriveKeyFromPassword, loadEncryptedPrivateKey, storeEncryptedPrivateKey } from '@/lib/crypto'
 import { useAuthStore } from '@/stores/authStore'
 import { base64ToUint8Array, cn } from '@/lib/utils'
-import type { Secret, SecretType } from '@/types'
+import type { Secret, SecretType, User } from '@/types'
 import { log } from '@/lib/debug'
 
 const schema = z.object({
@@ -29,6 +29,12 @@ const backupSchema = z
   })
 
 type FormValues = z.infer<typeof schema>
+type ShareScope = 'member' | 'team'
+
+function toDateTimeLocalValue(date: Date): string {
+  const pad = (value: number) => String(value).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`
+}
 
 const TYPE_ICON: Record<SecretType, React.ReactNode> = {
   password: <KeyRound size={14} />,
@@ -55,6 +61,16 @@ export function HomePage() {
   const [pendingDeleteSecret, setPendingDeleteSecret] = useState<Secret | null>(null)
   const [hasIndexedDbBackup, setHasIndexedDbBackup] = useState<boolean | null>(null)
   const [backupImportStatus, setBackupImportStatus] = useState<string | null>(null)
+  const [shareTargetSecret, setShareTargetSecret] = useState<Secret | null>(null)
+  const [teamMembers, setTeamMembers] = useState<User[]>([])
+  const [selectedTeamId, setSelectedTeamId] = useState('')
+  const [isLoadingTeamMembers, setIsLoadingTeamMembers] = useState(false)
+  const [shareScope, setShareScope] = useState<ShareScope>('member')
+  const [shareExpiresAtInput, setShareExpiresAtInput] = useState('')
+  const [selectedMemberId, setSelectedMemberId] = useState('')
+  const [shareError, setShareError] = useState<string | null>(null)
+  const [isSharing, setIsSharing] = useState(false)
+  const [shareStatus, setShareStatus] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
   const {
@@ -313,6 +329,167 @@ export function HomePage() {
     setPendingDeleteSecret(null)
   }
 
+  const closeShareModal = () => {
+    if (isSharing) {
+      return
+    }
+    setShareTargetSecret(null)
+    setShareError(null)
+    setSelectedMemberId('')
+    setSelectedTeamId('')
+    setTeamMembers([])
+    setShareScope('member')
+    setShareExpiresAtInput('')
+  }
+
+  const handleOpenShareModal = (secret: Secret) => {
+    if (!user || user.role !== 'tl') {
+      return
+    }
+
+    setApiError(null)
+    setShareStatus(null)
+    setShareError(null)
+    setShareTargetSecret(secret)
+    setShareScope('member')
+    setShareExpiresAtInput('')
+    setSelectedMemberId('')
+
+    const teams = user.teams ?? []
+    if (teams.length === 0) {
+      setSelectedTeamId('')
+      setTeamMembers([])
+      setShareError('You are not assigned to a team yet. Ask an admin to add you to a team first.')
+      return
+    }
+
+    setSelectedTeamId(teams[0].id)
+  }
+
+  useEffect(() => {
+    if (!user || user.role !== 'tl' || !shareTargetSecret || !selectedTeamId) {
+      return
+    }
+
+    let canceled = false
+
+    const loadSelectedTeamMembers = async () => {
+      setIsLoadingTeamMembers(true)
+      setTeamMembers([])
+      setSelectedMemberId('')
+      setShareError(null)
+
+      try {
+        const response = await api.get<User[]>('/users/', {
+          params: { team: selectedTeamId, active: '1' },
+        })
+
+        if (canceled) {
+          return
+        }
+
+        const members = response.data.filter((member) => member.id !== user.id)
+        setTeamMembers(members)
+        if (members.length > 0) {
+          setSelectedMemberId(members[0].id)
+        } else {
+          setShareError('No active members found in the selected team.')
+        }
+      } catch {
+        if (canceled) {
+          return
+        }
+        setTeamMembers([])
+        setShareError('Could not load team members for the selected team. Please try again.')
+      } finally {
+        if (!canceled) {
+          setIsLoadingTeamMembers(false)
+        }
+      }
+    }
+
+    void loadSelectedTeamMembers()
+
+    return () => {
+      canceled = true
+    }
+  }, [user, shareTargetSecret, selectedTeamId])
+
+  const handleShareSecret = async () => {
+    if (!user || !shareTargetSecret) {
+      return
+    }
+
+    const recipients =
+      shareScope === 'team'
+        ? teamMembers
+        : teamMembers.filter((member) => member.id === selectedMemberId)
+
+    if (recipients.length === 0) {
+      setShareError(
+        shareScope === 'team'
+          ? 'There are no team members available for sharing.'
+          : 'Select a team member to share this secret with.',
+      )
+      return
+    }
+
+    setShareError(null)
+    setShareStatus(null)
+    setIsSharing(true)
+
+    const sharingExpiresAt = shareExpiresAtInput ? new Date(shareExpiresAtInput) : null
+    if (sharingExpiresAt && Number.isNaN(sharingExpiresAt.getTime())) {
+      setIsSharing(false)
+      setShareError('Invalid expiration date and time.')
+      return
+    }
+    if (sharingExpiresAt && sharingExpiresAt.getTime() <= Date.now()) {
+      setIsSharing(false)
+      setShareError('Expiration must be in the future.')
+      return
+    }
+
+    try {
+      const results = await Promise.allSettled(
+        recipients.map((recipient) =>
+          api.post(
+            `/secrets/${shareTargetSecret.id}/share`,
+            {
+              sharing_with: recipient.id,
+              ...(sharingExpiresAt ? { sharing_expires_at: sharingExpiresAt.toISOString() } : {}),
+            },
+            { params: { user: user.id } },
+          ),
+        ),
+      )
+
+      const successCount = results.filter((result) => result.status === 'fulfilled').length
+      const failedCount = results.length - successCount
+
+      if (successCount === 0) {
+        setShareError('Sharing failed for all selected recipients.')
+        return
+      }
+
+      if (failedCount > 0) {
+        setShareStatus(`Shared with ${successCount} member(s). ${failedCount} share request(s) failed.`)
+      } else {
+        setShareStatus(
+          shareScope === 'team'
+            ? `Secret shared with selected team (${successCount} members).`
+            : 'Secret shared with selected member.',
+        )
+      }
+
+      closeShareModal()
+    } catch {
+      setShareError('Could not complete sharing. Please try again.')
+    } finally {
+      setIsSharing(false)
+    }
+  }
+
   const handleMasterPasswordSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!user || !masterPassword.trim()) return
@@ -398,6 +575,9 @@ export function HomePage() {
     return null
   }
 
+  const userTeams = user.teams ?? []
+  const minShareExpiry = toDateTimeLocalValue(new Date(Date.now() + 60_000))
+
   return (
     <div className="relative min-h-screen overflow-hidden bg-slate-100 px-4 py-8 text-slate-900">
       {pendingDeleteSecret && (
@@ -434,6 +614,138 @@ export function HomePage() {
               >
                 <Trash2 size={14} />
                 {deletingSecretId ? 'Deleting...' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {shareTargetSecret && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
+          <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-lg">
+            <div className="mb-2 flex items-center justify-between gap-3">
+              <h2 className="text-lg font-semibold text-slate-900">Share Secret</h2>
+              <button
+                type="button"
+                onClick={closeShareModal}
+                disabled={isSharing}
+                className="text-slate-500 hover:text-slate-700 disabled:opacity-50"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <p className="text-sm text-slate-600">
+              Share <span className="font-semibold text-slate-800">{shareTargetSecret.label}</span> with one member or your whole team.
+            </p>
+
+            {userTeams.length > 1 && (
+              <div className="mt-4 flex flex-col gap-1">
+                <label className="text-xs font-medium uppercase tracking-wide text-slate-500">Team</label>
+                <select
+                  value={selectedTeamId}
+                  onChange={(e) => setSelectedTeamId(e.target.value)}
+                  disabled={isSharing}
+                  className={inputCls}
+                >
+                  {userTeams.map((team) => (
+                    <option key={team.id} value={team.id}>
+                      {team.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {userTeams.length === 1 && (
+              <p className="mt-4 text-xs text-slate-600">
+                Team: <span className="font-medium text-slate-800">{userTeams[0].name}</span>
+              </p>
+            )}
+
+            <div className="mt-4 grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setShareScope('member')}
+                disabled={isSharing}
+                className={cn(
+                  'rounded-lg border px-3 py-2 text-sm font-medium transition-colors disabled:opacity-60',
+                  shareScope === 'member'
+                    ? 'border-cyan-300 bg-cyan-50 text-cyan-700'
+                    : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50',
+                )}
+              >
+                Share with member
+              </button>
+              <button
+                type="button"
+                onClick={() => setShareScope('team')}
+                disabled={isSharing}
+                className={cn(
+                  'rounded-lg border px-3 py-2 text-sm font-medium transition-colors disabled:opacity-60',
+                  shareScope === 'team'
+                    ? 'border-cyan-300 bg-cyan-50 text-cyan-700'
+                    : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50',
+                )}
+              >
+                Share with whole team
+              </button>
+            </div>
+
+            <div className="mt-4 flex flex-col gap-1">
+              <label className="text-xs font-medium uppercase tracking-wide text-slate-500">Expires at (optional)</label>
+              <input
+                type="datetime-local"
+                value={shareExpiresAtInput}
+                min={minShareExpiry}
+                onChange={(e) => setShareExpiresAtInput(e.target.value)}
+                disabled={isSharing}
+                className={inputCls}
+              />
+            </div>
+
+            {shareScope === 'member' && (
+              <div className="mt-4 flex flex-col gap-1">
+                <label className="text-xs font-medium uppercase tracking-wide text-slate-500">Team member</label>
+                <select
+                  value={selectedMemberId}
+                  onChange={(e) => setSelectedMemberId(e.target.value)}
+                  disabled={isLoadingTeamMembers || isSharing || teamMembers.length === 0}
+                  className={inputCls}
+                >
+                  {teamMembers.length === 0 ? (
+                    <option value="">No members available</option>
+                  ) : (
+                    teamMembers.map((member) => (
+                      <option key={member.id} value={member.id}>
+                        {member.username} ({member.role.toUpperCase()})
+                      </option>
+                    ))
+                  )}
+                </select>
+              </div>
+            )}
+
+            {isLoadingTeamMembers && <p className="mt-3 text-xs text-slate-500">Loading team members...</p>}
+            {shareError && <p className="mt-3 text-xs text-red-600">{shareError}</p>}
+
+            <div className="mt-4 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={closeShareModal}
+                disabled={isSharing}
+                className="inline-flex items-center justify-center rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleShareSecret()}
+                disabled={isSharing || isLoadingTeamMembers || teamMembers.length === 0}
+                className="inline-flex items-center gap-2 rounded-lg border border-cyan-200 bg-cyan-50 px-3 py-2 text-sm font-medium text-cyan-700 transition-colors hover:bg-cyan-100 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <Users size={14} />
+                {isSharing ? 'Sharing...' : 'Share'}
               </button>
             </div>
           </div>
@@ -641,6 +953,7 @@ export function HomePage() {
             </div>
 
             {revealError && <p className="mt-3 text-sm text-red-600">{revealError}</p>}
+            {shareStatus && <p className="mt-3 text-sm text-emerald-700">{shareStatus}</p>}
 
             {isLoading ? (
               <p className="mt-3 text-sm text-slate-500">Loading secrets...</p>
@@ -683,6 +996,17 @@ export function HomePage() {
                           <Pencil size={12} />
                           Edit
                         </button>
+                        {user.role === 'tl' && (
+                          <button
+                            type="button"
+                            onClick={() => void handleOpenShareModal(secret)}
+                            disabled={deletingSecretId === secret.id}
+                            className="inline-flex items-center gap-1 rounded-lg border border-cyan-200 bg-cyan-50 px-2.5 py-1 text-[11px] font-medium text-cyan-700 transition-colors hover:bg-cyan-100 disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            <Send size={12} />
+                            Share
+                          </button>
+                        )}
                         <button
                           type="button"
                           onClick={() => handleOpenDeleteModal(secret)}
