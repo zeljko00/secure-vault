@@ -146,7 +146,7 @@ class SharedSecretView(APIView):
     def delete(self, request, id):
         request_user = request.query_params.get("user") # TODO: take user from session
         shared = get_object_or_404(SharedSecret, id=id)
-        if str(request_user) != str(shared.sharing_with.id):
+        if str(request_user) != str(shared.secret.owner.id):
             return Response(status=status.HTTP_403_FORBIDDEN)
         shared.sharing_revoked = True
         shared.save()
