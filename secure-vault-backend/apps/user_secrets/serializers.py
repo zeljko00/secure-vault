@@ -38,3 +38,26 @@ class SharedSecretSerializer(serializers.ModelSerializer):
         if value is not None and value <= timezone.now():
             raise serializers.ValidationError("sharing_expires_at must be in the future.")
         return value
+
+
+class OwnedSharedSecretSerializer(serializers.ModelSerializer):
+    secret_id = serializers.UUIDField(source="secret.id", read_only=True)
+    secret_label = serializers.CharField(source="secret.label", read_only=True)
+    secret_type = serializers.CharField(source="secret.type", read_only=True)
+    sharing_with_id = serializers.UUIDField(source="sharing_with.id", read_only=True)
+    sharing_with_username = serializers.CharField(source="sharing_with.username", read_only=True)
+    sharing_with_role = serializers.CharField(source="sharing_with.role", read_only=True)
+
+    class Meta:
+        model = SharedSecret
+        fields = [
+            "id",
+            "secret_id",
+            "secret_label",
+            "secret_type",
+            "sharing_with_id",
+            "sharing_with_username",
+            "sharing_with_role",
+            "sharing_expires_at",
+            "sharing_revoked",
+        ]

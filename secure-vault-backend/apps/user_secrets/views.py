@@ -10,6 +10,7 @@ from redis.exceptions import RedisError
 from apps.user_secrets.models import Secret, SharedSecret
 from apps.user_secrets.serializers import (
     SecretSerializer,
+    OwnedSharedSecretSerializer,
     SharedSecretSerializer,
 )
 from apps.users.models import User
@@ -124,10 +125,10 @@ class ShareSecretView(APIView):
 
 
 class SharedSecretView(APIView):
-    def get(self, request, shared_secret_id):
+    def get(self, request, id):
         request_user = request.query_params.get("user")
         shared = get_object_or_404(
-            SharedSecret, id=shared_secret_id
+            SharedSecret, id=id
         )
         if shared.sharing_revoked:
             return Response(status=status.HTTP_404_NOT_FOUND)
@@ -140,15 +141,42 @@ class SharedSecretView(APIView):
                 status=status.HTTP_410_GONE,
             )
 
-        return Response(shared, status=status.HTTP_200_OK)
+        return Response({**SharedSecretSerializer(shared).data, "cipher_text": payload}, status=status.HTTP_200_OK)
 
-    def delete(self, request, shared_secret_id):
+    def delete(self, request, id):
         request_user = request.query_params.get("user") # TODO: take user from session
-        shared = get_object_or_404(
-            SharedSecret, id=shared_secret_id)
+        shared = get_object_or_404(SharedSecret, id=id)
         if str(request_user) != str(shared.sharing_with.id):
             return Response(status=status.HTTP_403_FORBIDDEN)
         shared.sharing_revoked = True
         shared.save()
         get_redis_client().delete(str(shared.id))
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+class MyOwnedSharedSecretsView(APIView): 
+    def get(self, request):
+        user_id = request.query_params.get("user") # TODO: take user from session
+        if not user_id:
+            return Response(
+                {"detail": "user query parameter is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        user = get_object_or_404(User, id=user_id)
+        if user.role != "tl":
+            return Response(status=status.HTTP_403_FORBIDDEN)
+
+        shared_queryset_1 = (
+            SharedSecret.objects
+            .filter(secret__owner=user, sharing_revoked=False, sharing_expires_at__gt=timezone.now())
+            .select_related("secret", "sharing_with")
+            .order_by("secret__label", "sharing_with__username")
+        )
+        shared_queryset_2 = (
+            SharedSecret.objects
+            .filter(secret__owner=user, sharing_revoked=False, sharing_expires_at__isnull=True)
+            .select_related("secret", "sharing_with")
+            .order_by("secret__label", "sharing_with__username")
+        )
+        serializer = OwnedSharedSecretSerializer(list(shared_queryset_1) + list(shared_queryset_2), many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
