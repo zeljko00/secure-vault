@@ -179,7 +179,7 @@ export function HomePage() {
     }
 
     void fetchOwnedSharedSecrets(user)
-  }, [user, fetchOwnedSharedSecrets])
+  }, [user, fetchOwnedSharedSecrets, secrets] )
 
   useEffect(() => {
     if (!user) {
