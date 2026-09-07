@@ -1,7 +1,7 @@
 from rest_framework import serializers
 
 from apps.user_secrets.models import Secret, SharedSecret
-
+from django.utils import timezone
 
 class SecretValueField(serializers.Field):
     def to_representation(self, value):
@@ -33,3 +33,8 @@ class SharedSecretSerializer(serializers.ModelSerializer):
         model = SharedSecret
         fields = ["id", "secret", "sharing_with", "sharing_expires_at", "sharing_revoked"]
         read_only_fields = ["id", "secret", "sharing_revoked"]
+
+    def validate_sharing_expires_at(self, value):
+        if value is not None and value <= timezone.now():
+            raise serializers.ValidationError("sharing_expires_at must be in the future.")
+        return value

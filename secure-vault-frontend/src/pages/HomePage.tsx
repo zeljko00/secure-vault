@@ -6,7 +6,15 @@ import axios from 'axios'
 import { Code2, Eye, EyeOff, FileQuestion, KeyRound, Lock, LogOut, Pencil, Plus, Send, ShieldCheck, Trash2, Users, X } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { api } from '@/lib/api'
-import { decryptAESGCM, encryptAESGCM, deriveKeyFromPassword, loadEncryptedPrivateKey, storeEncryptedPrivateKey } from '@/lib/crypto'
+import {
+  decryptAESGCM,
+  deriveKeyFromPassword,
+  encryptAESGCM,
+  encryptWithPublicKey,
+  importPublicKeyFromPEM,
+  loadEncryptedPrivateKey,
+  storeEncryptedPrivateKey,
+} from '@/lib/crypto'
 import { useAuthStore } from '@/stores/authStore'
 import { base64ToUint8Array, cn } from '@/lib/utils'
 import type { Secret, SecretType, User } from '@/types'
@@ -420,6 +428,16 @@ export function HomePage() {
       return
     }
 
+    if (!masterKey) {
+      setShareError('Enter your master password before sharing a secret.')
+      return
+    }
+
+    if (!shareTargetSecret.iv) {
+      setShareError('This secret is missing its decryption IV and cannot be shared.')
+      return
+    }
+
     const recipients =
       shareScope === 'team'
         ? teamMembers
@@ -438,6 +456,15 @@ export function HomePage() {
     setShareStatus(null)
     setIsSharing(true)
 
+    let plaintext = ''
+    try {
+      plaintext = await decryptAESGCM(masterKey, shareTargetSecret.value, shareTargetSecret.iv)
+    } catch {
+      setIsSharing(false)
+      setShareError('Could not decrypt this secret for sharing. Check the loaded master password.')
+      return
+    }
+
     const sharingExpiresAt = shareExpiresAtInput ? new Date(shareExpiresAtInput) : null
     if (sharingExpiresAt && Number.isNaN(sharingExpiresAt.getTime())) {
       setIsSharing(false)
@@ -452,16 +479,20 @@ export function HomePage() {
 
     try {
       const results = await Promise.allSettled(
-        recipients.map((recipient) =>
-          api.post(
+        recipients.map(async (recipient) => {
+          const recipientPublicKey = await importPublicKeyFromPEM(recipient.pub_key)
+          const encryptedPayload = await encryptWithPublicKey(recipientPublicKey, plaintext)
+
+          return api.post(
             `/secrets/${shareTargetSecret.id}/share`,
             {
               sharing_with: recipient.id,
+              cipher_text: encryptedPayload,
               ...(sharingExpiresAt ? { sharing_expires_at: sharingExpiresAt.toISOString() } : {}),
             },
             { params: { user: user.id } },
-          ),
-        ),
+          )
+        }),
       )
 
       const successCount = results.filter((result) => result.status === 'fulfilled').length
