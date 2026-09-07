@@ -53,7 +53,7 @@ WHERE to_regclass('public.user_secrets_sharedsecret') IS NOT NULL\gexec
 SELECT format('GRANT SELECT, INSERT, DELETE ON TABLE public.user_secrets_sharedsecretaccesslog TO %I', :'db_user')
 WHERE to_regclass('public.user_secrets_sharedsecretaccesslog') IS NOT NULL\gexec
 
-SELECT format('GRANT SELECT, INSERT, DELETE ON TABLE public.user_secrets_honeypotsecretaccesslog TO %I', :'db_user')
+SELECT format('GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.user_secrets_honeypotsecretaccesslog TO %I', :'db_user')
 WHERE to_regclass('public.user_secrets_honeypotsecretaccesslog') IS NOT NULL\gexec
 
 SELECT format('GRANT SELECT, INSERT ON TABLE public.users_userdeactivationlog TO %I', :'db_user')
