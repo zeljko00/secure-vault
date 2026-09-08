@@ -74,7 +74,7 @@ class UserLoginView(APIView):
 
     def post(self, request):
         user = User.objects.filter(username=request.data.get("username")).first()
-        if not user or user.password_hash != sha256(request.data.get("password").encode()):
+        if not user or user.password_hash != sha256(request.data.get("password").encode()) or hasattr(user, "deactivation_log"): 
             return Response(
                 {"details": "Invalid username or password."},
                 status=status.HTTP_401_UNAUTHORIZED,
