@@ -8,7 +8,6 @@ import type { Team, User, UserRole } from '@/types'
 const EDITABLE_ROLE_OPTIONS: Array<{ value: Exclude<UserRole, 'guest'>; label: string }> = [
   { value: 'dev', label: 'Developer' },
   { value: 'tl', label: 'Team Lead' },
-  { value: 'admin', label: 'Admin' },
 ]
 
 function formatDateTime(value: string): string {
