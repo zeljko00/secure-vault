@@ -1,5 +1,6 @@
 import json
 
+from django.db.models import Q
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework.views import APIView
@@ -12,6 +13,7 @@ from apps.user_secrets.serializers import (
     SecretSerializer,
     OwnedSharedSecretSerializer,
     SharedSecretSerializer,
+    ReceivedSharedSecretSerializer,
 )
 from apps.users.models import User
 from util.redis_client import get_redis_client
@@ -127,11 +129,26 @@ class ShareSecretView(APIView):
 class SharedSecretView(APIView):
     def get(self, request, id):
         request_user = request.query_params.get("user")
+        if not request_user:
+            return Response(
+                {"detail": "user query parameter is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         shared = get_object_or_404(
             SharedSecret, id=id
         )
+        if str(request_user) != str(shared.sharing_with.id):
+            return Response(status=status.HTTP_403_FORBIDDEN)
+
         if shared.sharing_revoked:
             return Response(status=status.HTTP_404_NOT_FOUND)
+
+        if shared.sharing_expires_at and shared.sharing_expires_at <= timezone.now():
+            return Response(
+                {"detail": "Shared secret expired or unavailable."},
+                status=status.HTTP_410_GONE,
+            )
 
         redis_client = get_redis_client()
         payload = redis_client.get(str(shared.id))
@@ -140,6 +157,9 @@ class SharedSecretView(APIView):
                 {"detail": "Shared secret expired or unavailable."},
                 status=status.HTTP_410_GONE,
             )
+
+        if isinstance(payload, bytes):
+            payload = payload.decode("utf-8")
 
         return Response({**SharedSecretSerializer(shared).data, "cipher_text": payload}, status=status.HTTP_200_OK)
 
@@ -179,4 +199,26 @@ class MyOwnedSharedSecretsView(APIView):
             .order_by("secret__label", "sharing_with__username")
         )
         serializer = OwnedSharedSecretSerializer(list(shared_queryset_1) + list(shared_queryset_2), many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+class MyReceivedSharedSecretsView(APIView):
+    def get(self, request):
+        user_id = request.query_params.get("user")  # TODO: take user from session
+        if not user_id:
+            return Response(
+                {"detail": "user query parameter is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        user = get_object_or_404(User, id=user_id)
+        shared_queryset = (
+            SharedSecret.objects.filter(
+                sharing_with=user,
+                sharing_revoked=False,
+            )
+            .filter(Q(sharing_expires_at__isnull=True) | Q(sharing_expires_at__gt=timezone.now()))
+            .order_by("secret__owner__username", "secret__label")
+        )
+        serializer = ReceivedSharedSecretSerializer(shared_queryset, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
