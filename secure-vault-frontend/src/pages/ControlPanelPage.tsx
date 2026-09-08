@@ -3,7 +3,13 @@ import { Activity, Check, Plus, RefreshCw, UserCheck, UserX } from 'lucide-react
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { StatusBadge } from '@/components/ui/StatusBadge'
-import type { Team, User } from '@/types'
+import type { Team, User, UserRole } from '@/types'
+
+const EDITABLE_ROLE_OPTIONS: Array<{ value: Exclude<UserRole, 'guest'>; label: string }> = [
+  { value: 'dev', label: 'Developer' },
+  { value: 'tl', label: 'Team Lead' },
+  { value: 'admin', label: 'Admin' },
+]
 
 function formatDateTime(value: string): string {
   const parsed = new Date(value)
@@ -30,6 +36,7 @@ function UserSection({
   editingUserId,
   pendingActionUserId,
   onToggleEditUser,
+  onChangeRole,
   onToggleTeam,
 }: {
   title: string
@@ -42,6 +49,7 @@ function UserSection({
   editingUserId: string | null
   pendingActionUserId: string | null
   onToggleEditUser: (userId: string) => void
+  onChangeRole: (userId: string, role: Exclude<UserRole, 'guest'>) => void
   onToggleTeam: (userId: string, teamId: string, isAssigned: boolean) => void
 }) {
   const hasEditColumn = variant === 'active'
@@ -135,6 +143,35 @@ function UserSection({
 
                       {isEditingThisUser && (
                         <>
+                          <div className="space-y-2">
+                            <p className="text-[11px] uppercase tracking-[0.16em] text-[var(--color-text-dim)]">
+                              Change role
+                            </p>
+                            <div className="flex flex-wrap gap-2">
+                              {EDITABLE_ROLE_OPTIONS.map((roleOption) => {
+                                const isCurrentRole = listedUser.role === roleOption.value
+
+                                return (
+                                  <button
+                                    key={roleOption.value}
+                                    type="button"
+                                    onClick={() => onChangeRole(listedUser.id, roleOption.value)}
+                                    disabled={isPending || isCurrentRole}
+                                    className={cn(
+                                      'inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-medium transition-all duration-200',
+                                      isCurrentRole
+                                        ? 'border-[var(--color-primary)]/40 bg-[var(--color-primary)]/10 text-[var(--color-primary)]'
+                                        : 'border-[var(--color-border)] bg-[var(--color-panel)]/80 text-[var(--color-text-muted)] hover:border-[var(--color-secondary)]/40 hover:bg-[var(--color-secondary)]/10 hover:text-[var(--color-secondary)]',
+                                      'disabled:cursor-not-allowed disabled:opacity-60',
+                                    )}
+                                  >
+                                    {roleOption.label}
+                                  </button>
+                                )
+                              })}
+                            </div>
+                          </div>
+
                           <p className="text-[11px] uppercase tracking-[0.16em] text-[var(--color-text-dim)]">
                             Click a team to toggle access
                           </p>
@@ -226,6 +263,21 @@ export function ControlPanelPage() {
 
   const handleToggleEditUser = (userId: string) => {
     setEditingUserId((current) => (current === userId ? null : userId))
+  }
+
+  const handleChangeRole = async (userId: string, role: Exclude<UserRole, 'guest'>) => {
+    setPendingActionUserId(userId)
+    setError(null)
+
+    try {
+      await api.put(`/users/${userId}/role/`, { role })
+      setEditingUserId(userId)
+      await fetchUsers(false)
+    } catch {
+      setError('Unable to change the selected user role.')
+    } finally {
+      setPendingActionUserId(null)
+    }
   }
 
   const handleToggleTeam = async (userId: string, teamId: string, isAssigned: boolean) => {
@@ -330,6 +382,9 @@ export function ControlPanelPage() {
               editingUserId={editingUserId}
               pendingActionUserId={pendingActionUserId}
               onToggleEditUser={handleToggleEditUser}
+              onChangeRole={(userId, role) => {
+                void handleChangeRole(userId, role)
+              }}
               onToggleTeam={(userId, teamId, isAssigned) => {
                 void handleToggleTeam(userId, teamId, isAssigned)
               }}
@@ -345,6 +400,9 @@ export function ControlPanelPage() {
               editingUserId={editingUserId}
               pendingActionUserId={pendingActionUserId}
               onToggleEditUser={handleToggleEditUser}
+              onChangeRole={(userId, role) => {
+                void handleChangeRole(userId, role)
+              }}
               onToggleTeam={(userId, teamId, isAssigned) => {
                 void handleToggleTeam(userId, teamId, isAssigned)
               }}
