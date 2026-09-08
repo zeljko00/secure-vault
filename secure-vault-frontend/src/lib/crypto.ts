@@ -5,6 +5,7 @@ const DEC = new TextDecoder()
 
 export type EncryptedPrivateKeyBlob = {
   ciphertext: string
+  iv?: string
   salt: string
 }
 
@@ -166,6 +167,32 @@ export async function decryptAESGCM(
     toArrayBuffer(ciphertextBytes),
   )
   return DEC.decode(pt)
+}
+
+export async function importPrivateKeyFromPEM(pem: string): Promise<CryptoKey> {
+  const base64 = pem
+    .replace('-----BEGIN PRIVATE KEY-----', '')
+    .replace('-----END PRIVATE KEY-----', '')
+    .replace(/\s+/g, '')
+  const pkcs8 = toArrayBuffer(base64ToUint8Array(base64))
+  return window.crypto.subtle.importKey(
+    'pkcs8',
+    pkcs8,
+    { name: 'RSA-OAEP', hash: 'SHA-256' },
+    false,
+    ['decrypt'],
+  )
+}
+
+export async function decryptPrivateKeyFromBlob(
+  key: CryptoKey,
+  encryptedBlob: EncryptedPrivateKeyBlob,
+): Promise<CryptoKey> {
+  if (!encryptedBlob.iv) {
+    throw new Error('Missing IV for encrypted private key')
+  }
+  const privateKeyPem = await decryptAESGCM(key, encryptedBlob.ciphertext, encryptedBlob.iv)
+  return importPrivateKeyFromPEM(privateKeyPem)
 }
 
 export async function encryptWithPublicKey(
