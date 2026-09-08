@@ -7,7 +7,9 @@ import { Code2, Eye, EyeOff, FileQuestion, KeyRound, Lock, LogOut, Pencil, Plus,
 import { useNavigate } from 'react-router-dom'
 import { api } from '@/lib/api'
 import {
+  decryptPrivateKeyFromBlob,
   decryptAESGCM,
+  decryptWithPrivateKey,
   deriveKeyFromPassword,
   encryptAESGCM,
   encryptWithPublicKey,
@@ -17,7 +19,7 @@ import {
 } from '@/lib/crypto'
 import { useAuthStore } from '@/stores/authStore'
 import { base64ToUint8Array, cn } from '@/lib/utils'
-import type { OwnedSharedSecret, Secret, SecretType, User } from '@/types'
+import type { OwnedSharedSecret, ReceivedSharedSecret, Secret, SecretType, User } from '@/types'
 import { log } from '@/lib/debug'
 
 const schema = z.object({
@@ -30,6 +32,7 @@ const backupSchema = z
   .object({
     encryptedPrivateKey: z.string().min(1).optional(),
     ciphertext: z.string().min(1).optional(),
+    iv: z.string().min(1).optional(),
     salt: z.string().min(1),
   })
   .refine((data) => Boolean(data.encryptedPrivateKey ?? data.ciphertext), {
@@ -38,6 +41,9 @@ const backupSchema = z
 
 type FormValues = z.infer<typeof schema>
 type ShareScope = 'member' | 'team'
+type SharedSecretPayloadResponse = {
+  cipher_text: string
+}
 
 function toDateTimeLocalValue(date: Date): string {
   const pad = (value: number) => String(value).padStart(2, '0')
@@ -95,6 +101,12 @@ export function HomePage() {
   const [ownedSharedSecrets, setOwnedSharedSecrets] = useState<OwnedSharedSecret[]>([])
   const [isLoadingOwnedSharedSecrets, setIsLoadingOwnedSharedSecrets] = useState(false)
   const [ownedSharedSecretsError, setOwnedSharedSecretsError] = useState<string | null>(null)
+  const [receivedSharedSecrets, setReceivedSharedSecrets] = useState<ReceivedSharedSecret[]>([])
+  const [isLoadingReceivedSharedSecrets, setIsLoadingReceivedSharedSecrets] = useState(false)
+  const [receivedSharedSecretsError, setReceivedSharedSecretsError] = useState<string | null>(null)
+  const [revealedReceivedSecrets, setRevealedReceivedSecrets] = useState<Record<string, string>>({})
+  const [revealingReceivedSecretId, setRevealingReceivedSecretId] = useState<string | null>(null)
+  const [receivedRevealError, setReceivedRevealError] = useState<string | null>(null)
   const [revokeStatus, setRevokeStatus] = useState<string | null>(null)
   const [revokingSharedSecretId, setRevokingSharedSecretId] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
@@ -132,6 +144,27 @@ export function HomePage() {
     } finally {
       if (!silent) {
         setIsLoadingOwnedSharedSecrets(false)
+      }
+    }
+  }, [])
+
+  const fetchReceivedSharedSecrets = useCallback(async (activeUser: User, silent = false) => {
+    if (!silent) {
+      setIsLoadingReceivedSharedSecrets(true)
+    }
+    setReceivedSharedSecretsError(null)
+
+    try {
+      const response = await api.get<ReceivedSharedSecret[]>('/secrets/shared/with-me/', {
+        params: { user: activeUser.id },
+      })
+      setReceivedSharedSecrets(Array.isArray(response.data) ? response.data : [])
+    } catch {
+      setReceivedSharedSecrets([])
+      setReceivedSharedSecretsError('Could not load secrets shared with you. Please try again later.')
+    } finally {
+      if (!silent) {
+        setIsLoadingReceivedSharedSecrets(false)
       }
     }
   }, [])
@@ -183,6 +216,17 @@ export function HomePage() {
 
   useEffect(() => {
     if (!user) {
+      setReceivedSharedSecrets([])
+      setReceivedSharedSecretsError(null)
+      setIsLoadingReceivedSharedSecrets(false)
+      return
+    }
+
+    void fetchReceivedSharedSecrets(user)
+  }, [user, fetchReceivedSharedSecrets])
+
+  useEffect(() => {
+    if (!user) {
       setHasIndexedDbBackup(null)
       return
     }
@@ -190,7 +234,7 @@ export function HomePage() {
     const checkIndexedDbBackup = async () => {
       try {
         const blob = await loadEncryptedPrivateKey(user.id)
-        setHasIndexedDbBackup(Boolean(blob?.ciphertext && blob?.salt))
+        setHasIndexedDbBackup(Boolean(blob?.ciphertext && blob?.salt && blob?.iv))
       } catch {
         setHasIndexedDbBackup(false)
       }
@@ -611,6 +655,59 @@ export function HomePage() {
     }
   }
 
+  const handleRevealReceivedSecret = async (sharedSecret: ReceivedSharedSecret) => {
+    if (!user) {
+      setReceivedRevealError('Please sign in again.')
+      return
+    }
+
+    if (revealedReceivedSecrets[sharedSecret.id]) {
+      setRevealedReceivedSecrets((prev) => {
+        const next = { ...prev }
+        delete next[sharedSecret.id]
+        return next
+      })
+      setReceivedRevealError(null)
+      return
+    }
+
+    if (!masterKey) {
+      setReceivedRevealError('Enter your master password first to reveal shared secret content.')
+      return
+    }
+
+    setReceivedRevealError(null)
+    setRevealingReceivedSecretId(sharedSecret.id)
+
+    try {
+      const encryptedPrivateKey = await loadEncryptedPrivateKey(user.id)
+      if (!encryptedPrivateKey?.ciphertext || !encryptedPrivateKey?.salt || !encryptedPrivateKey?.iv) {
+        setReceivedRevealError('Encrypted private key is missing or incomplete. Import a valid backup and try again.')
+        return
+      }
+
+      const privateKey = await decryptPrivateKeyFromBlob(masterKey, encryptedPrivateKey)
+      const response = await api.get<SharedSecretPayloadResponse>(`/secrets/shared/${sharedSecret.id}`, {
+        params: { user: user.id },
+      })
+      const plaintext = await decryptWithPrivateKey(privateKey, response.data.cipher_text)
+
+      setRevealedReceivedSecrets((prev) => ({
+        ...prev,
+        [sharedSecret.id]: plaintext,
+      }))
+    } catch (err: unknown) {
+      if (axios.isAxiosError(err)) {
+        const detail = err.response?.data?.detail
+        setReceivedRevealError(detail ?? 'Could not load or decrypt this shared secret.')
+      } else {
+        setReceivedRevealError('Could not load or decrypt this shared secret.')
+      }
+    } finally {
+      setRevealingReceivedSecretId(null)
+    }
+  }
+
   const handleMasterPasswordSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!user || !masterPassword.trim()) return
@@ -649,7 +746,7 @@ export function HomePage() {
 
     try {
       const existing = await loadEncryptedPrivateKey(user.id)
-      const hasBackup = Boolean(existing?.ciphertext && existing?.salt)
+      const hasBackup = Boolean(existing?.ciphertext && existing?.salt && existing?.iv)
       setHasIndexedDbBackup(hasBackup)
       if (hasBackup) {
         setBackupImportStatus('Existing backup will be replaced after you choose a JSON file.')
@@ -677,6 +774,7 @@ export function HomePage() {
 
       await storeEncryptedPrivateKey(user.id, {
         ciphertext,
+        iv: parsed.iv,
         salt: parsed.salt,
       })
 
@@ -1206,6 +1304,69 @@ export function HomePage() {
             )}
           </section>
         )}
+
+        <section className="rounded-2xl border border-slate-200/80 bg-white/90 p-5 shadow-sm backdrop-blur">
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="text-lg font-semibold tracking-tight text-slate-900">Shared With You</h2>
+            <span className="rounded-full border border-slate-300 bg-slate-50 px-2.5 py-0.5 text-xs font-medium text-slate-600">
+              {receivedSharedSecrets.length} active share(s)
+            </span>
+          </div>
+          <p className="mt-1 text-sm text-slate-600">These are secrets shared with your account by other members.</p>
+
+          {receivedSharedSecretsError && <p className="mt-3 text-sm text-red-600">{receivedSharedSecretsError}</p>}
+          {receivedRevealError && <p className="mt-3 text-sm text-red-600">{receivedRevealError}</p>}
+
+          {isLoadingReceivedSharedSecrets ? (
+            <p className="mt-3 text-sm text-slate-500">Loading shared secrets...</p>
+          ) : receivedSharedSecrets.length === 0 ? (
+            <p className="mt-3 rounded-lg border border-dashed border-slate-300 bg-slate-50 p-4 text-sm text-slate-500">
+              No active secrets have been shared with you.
+            </p>
+          ) : (
+            <ul className="mt-4 flex max-h-[26rem] flex-col gap-3 overflow-y-auto pr-1">
+              {receivedSharedSecrets.map((sharedSecret) => (
+                <li key={sharedSecret.id} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold text-slate-800">{sharedSecret.secret_label}</p>
+                      <p className="mt-1 text-xs text-slate-600">
+                        Shared by <span className="font-medium text-slate-800">{sharedSecret.owner_username}</span>
+                      </p>
+                      <p className="mt-1 text-xs text-slate-500">Expires: {formatShareExpiry(sharedSecret.sharing_expires_at)}</p>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <span className="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white px-2 py-0.5 text-[11px] font-medium text-slate-600">
+                        {TYPE_ICON[sharedSecret.secret_type]}
+                        {sharedSecret.secret_type.replace('_', ' ')}
+                      </span>
+
+                      <button
+                        type="button"
+                        onClick={() => void handleRevealReceivedSecret(sharedSecret)}
+                        className="inline-flex items-center gap-1 rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-[11px] font-medium text-slate-700 transition-colors hover:bg-slate-100"
+                      >
+                        {revealedReceivedSecrets[sharedSecret.id] ? <EyeOff size={12} /> : <Eye size={12} />}
+                        {revealedReceivedSecrets[sharedSecret.id]
+                          ? 'Hide'
+                          : revealingReceivedSecretId === sharedSecret.id
+                            ? 'Revealing...'
+                            : 'Reveal'}
+                      </button>
+                    </div>
+                  </div>
+
+                  {revealedReceivedSecrets[sharedSecret.id] && (
+                    <div className="mt-3 rounded-lg border border-cyan-200 bg-cyan-50 px-3 py-2 font-mono text-xs text-slate-800 break-all">
+                      {revealedReceivedSecrets[sharedSecret.id]}
+                    </div>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
       </div>
     </div>
   )

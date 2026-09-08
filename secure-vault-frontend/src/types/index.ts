@@ -46,6 +46,17 @@ export interface OwnedSharedSecret {
   sharing_expires_at?: string
 }
 
+export interface ReceivedSharedSecret {
+  id: string
+  secret_id: string
+  secret_label: string
+  secret_type: SecretType
+  owner_id: string
+  owner_username: string
+  sharing_expires_at?: string
+  sharing_revoked: boolean
+}
+
 export interface AuditEntry {
   id: string
   timestamp: string

@@ -37,6 +37,7 @@ type PrivateKeyBackupFile = {
   version: number
   createdAt: string
   encryptedPrivateKey: string
+  iv: string
   salt: string
 }
 
@@ -138,6 +139,7 @@ export function RegisterPage() {
         version: 1,
         createdAt: new Date().toISOString(),
         encryptedPrivateKey: encryptedPrivateKey.ciphertext,
+        iv: encryptedPrivateKey.iv ?? '',
         salt: encryptedPrivateKey.salt,
       }
       setPrivateKeyBackup(backupPayload)
