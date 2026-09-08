@@ -58,6 +58,7 @@ function UserSection({
   onToggleTeam: (userId: string, teamId: string, isAssigned: boolean) => void
 }) {
   const hasEditColumn = variant === 'active'
+  const hasReasonColumn = variant === 'revoked'
 
   return (
     <section className="glass rounded-3xl border border-[var(--color-border)]/80 bg-[var(--color-panel)]/70 p-6 shadow-[0_18px_64px_rgba(2,8,23,0.45)]">
@@ -86,6 +87,8 @@ function UserSection({
             'grid gap-4 border-b border-[var(--color-border)]/80 px-5 py-3 text-[11px] uppercase tracking-[0.18em] text-[var(--color-text-dim)]',
             hasEditColumn
               ? 'grid-cols-[minmax(0,1.1fr)_minmax(0,0.8fr)_minmax(0,0.9fr)_minmax(0,0.8fr)_minmax(0,1.4fr)]'
+              : hasReasonColumn
+                ? 'grid-cols-[minmax(0,1.1fr)_minmax(0,0.8fr)_minmax(0,0.9fr)_minmax(0,0.9fr)_minmax(0,1.2fr)]'
               : 'grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,0.8fr)_minmax(0,0.9fr)]',
           )}>
             <span>User</span>
@@ -93,6 +96,7 @@ function UserSection({
             <span>Teams</span>
             <span>{variant === 'active' ? 'Joined' : 'Deactivated'}</span>
             {hasEditColumn && <span>Edit</span>}
+            {hasReasonColumn && <span>Reason</span>}
           </div>
           <div>
             {users.map((listedUser) => {
@@ -108,15 +112,14 @@ function UserSection({
                     'grid gap-4 border-b border-[var(--color-border)]/60 px-5 py-4 last:border-b-0',
                     hasEditColumn
                       ? 'grid-cols-[minmax(0,1.1fr)_minmax(0,0.8fr)_minmax(0,0.9fr)_minmax(0,0.8fr)_minmax(0,1.4fr)]'
+                      : hasReasonColumn
+                        ? 'grid-cols-[minmax(0,1.1fr)_minmax(0,0.8fr)_minmax(0,0.9fr)_minmax(0,0.9fr)_minmax(0,1.2fr)]'
                       : 'grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,0.8fr)_minmax(0,0.9fr)]',
                   )}
                 >
                   <div className="min-w-0">
                     <p className="truncate text-sm font-medium text-[var(--color-text)]">{listedUser.username}</p>
                     <p className="truncate font-mono text-xs text-[var(--color-text-dim)]">{listedUser.email}</p>
-                    {deactivation?.reason && (
-                      <p className="mt-1 text-xs text-[var(--color-warning)]">Reason: {deactivation.reason}</p>
-                    )}
                   </div>
                   <div className="flex items-start">
                     <StatusBadge variant={listedUser.role} />
@@ -129,6 +132,11 @@ function UserSection({
                       ? formatDateTime(listedUser.join_timestamp)
                       : formatDateTime(deactivation?.timestamp ?? '')}
                   </div>
+                  {hasReasonColumn && (
+                    <div className="text-sm text-[var(--color-text-muted)]">
+                      {deactivation?.reason?.trim() || 'No reason provided'}
+                    </div>
+                  )}
                   {hasEditColumn && listedUser.role !== 'admin' && (
                     <div className="space-y-2">
                       <button
