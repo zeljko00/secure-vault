@@ -36,6 +36,9 @@ function UserSection({
   pendingActionUserId,
   onToggleEditUser,
   onChangeRole,
+  deactivationReasons,
+  onDeactivationReasonChange,
+  onDeactivateUser,
   onToggleTeam,
 }: {
   title: string
@@ -49,6 +52,9 @@ function UserSection({
   pendingActionUserId: string | null
   onToggleEditUser: (userId: string) => void
   onChangeRole: (userId: string, role: Exclude<UserRole, 'guest'>) => void
+  deactivationReasons: Record<string, string>
+  onDeactivationReasonChange: (userId: string, reason: string) => void
+  onDeactivateUser: (userId: string) => void
   onToggleTeam: (userId: string, teamId: string, isAssigned: boolean) => void
 }) {
   const hasEditColumn = variant === 'active'
@@ -137,7 +143,7 @@ function UserSection({
                           'disabled:cursor-not-allowed disabled:opacity-60',
                         )}
                       >
-                        {isEditingThisUser ? 'Done' : 'Edit user'}
+                        {isEditingThisUser ? 'Done editing' : 'Edit user'}
                       </button>
 
                       {isEditingThisUser && (
@@ -205,6 +211,27 @@ function UserSection({
                               })}
                             </div>
                           )}
+                            <div className="space-y-2">
+                            <p className="text-[11px] uppercase tracking-[0.16em] text-[var(--color-text-dim)]">
+                              Account access
+                            </p>
+                            <textarea
+                              value={deactivationReasons[listedUser.id] ?? ''}
+                              onChange={(event) => onDeactivationReasonChange(listedUser.id, event.target.value)}
+                              disabled={isPending}
+                              rows={3}
+                              placeholder="Optional deactivation reason"
+                              className="w-full rounded-2xl border border-[var(--color-border)] bg-[var(--color-panel)]/80 px-3 py-2 text-sm text-[var(--color-text)] placeholder:text-[var(--color-text-dim)] transition-all focus:border-[var(--color-danger)] focus:outline-none focus:shadow-[0_0_0_2px_rgba(239,68,68,0.35)] disabled:cursor-not-allowed disabled:opacity-60"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => onDeactivateUser(listedUser.id)}
+                              disabled={isPending}
+                              className="inline-flex items-center justify-center rounded-2xl border border-[var(--color-danger)]/40 bg-[var(--color-danger)]/10 px-4 py-2 text-sm font-medium text-[var(--color-danger)] transition-all duration-200 hover:bg-[var(--color-danger)]/16 hover:shadow-[0_0_18px_rgba(239,68,68,0.2)] disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              Deactivate user
+                            </button>
+                          </div>
                         </>
                       )}
                     </div>
@@ -224,6 +251,7 @@ export function ControlPanelPage() {
   const [deactivatedUsers, setDeactivatedUsers] = useState<User[]>([])
   const [teams, setTeams] = useState<Team[]>([])
   const [editingUserId, setEditingUserId] = useState<string | null>(null)
+  const [deactivationReasons, setDeactivationReasons] = useState<Record<string, string>>({})
   const [isLoading, setIsLoading] = useState(true)
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [pendingActionUserId, setPendingActionUserId] = useState<string | null>(null)
@@ -264,6 +292,13 @@ export function ControlPanelPage() {
     setEditingUserId((current) => (current === userId ? null : userId))
   }
 
+  const handleDeactivationReasonChange = (userId: string, reason: string) => {
+    setDeactivationReasons((current) => ({
+      ...current,
+      [userId]: reason,
+    }))
+  }
+
   const handleChangeRole = async (userId: string, role: Exclude<UserRole, 'guest'>) => {
     setPendingActionUserId(userId)
     setError(null)
@@ -274,6 +309,24 @@ export function ControlPanelPage() {
       await fetchUsers(false)
     } catch {
       setError('Unable to change the selected user role.')
+    } finally {
+      setPendingActionUserId(null)
+    }
+  }
+
+  const handleDeactivateUser = async (userId: string) => {
+    setPendingActionUserId(userId)
+    setError(null)
+
+    try {
+      const reason = deactivationReasons[userId]?.trim()
+
+      await api.put(`/users/${userId}/deactivate/`, reason ? { reason } : {})
+      setDeactivationReasons((current) => ({ ...current, [userId]: '' }))
+      setEditingUserId(null)
+      await fetchUsers(false)
+    } catch {
+      setError('Unable to deactivate the selected user.')
     } finally {
       setPendingActionUserId(null)
     }
@@ -384,6 +437,11 @@ export function ControlPanelPage() {
               onChangeRole={(userId, role) => {
                 void handleChangeRole(userId, role)
               }}
+              deactivationReasons={deactivationReasons}
+              onDeactivationReasonChange={handleDeactivationReasonChange}
+              onDeactivateUser={(userId) => {
+                void handleDeactivateUser(userId)
+              }}
               onToggleTeam={(userId, teamId, isAssigned) => {
                 void handleToggleTeam(userId, teamId, isAssigned)
               }}
@@ -401,6 +459,11 @@ export function ControlPanelPage() {
               onToggleEditUser={handleToggleEditUser}
               onChangeRole={(userId, role) => {
                 void handleChangeRole(userId, role)
+              }}
+              deactivationReasons={deactivationReasons}
+              onDeactivationReasonChange={handleDeactivationReasonChange}
+              onDeactivateUser={(userId) => {
+                void handleDeactivateUser(userId)
               }}
               onToggleTeam={(userId, teamId, isAssigned) => {
                 void handleToggleTeam(userId, teamId, isAssigned)
