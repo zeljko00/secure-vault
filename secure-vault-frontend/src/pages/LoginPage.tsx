@@ -35,7 +35,7 @@ export function LoginPage() {
       log('Login successful, user:', res.data)
       setUser(res.data)
       setMfaPending(false)
-      navigate('/')
+      navigate(res.data.role === 'admin' ? '/admin' : '/', { replace: true })
     } catch (err: unknown) {
       if (axios.isAxiosError(err) && err.response) {
         setApiError(err.response.data?.detail ?? err.response.data?.details ?? 'Invalid username or password')

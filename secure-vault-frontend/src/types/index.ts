@@ -1,11 +1,17 @@
 export type UserRole = 'admin' | 'tl' | 'dev' | 'guest'
 
+export interface UserDeactivationRecord {
+  timestamp: string
+  reason?: string | null
+}
+
 export interface User {
   id: string
   username: string
   email: string
   role: UserRole
   teams?: Team[]
+  deactivated?: UserDeactivationRecord[]
   pub_key: string
   join_timestamp: string
 }
