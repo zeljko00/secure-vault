@@ -121,6 +121,21 @@ class UserRoleView(APIView):
 class TeamsView(APIView):
     permission_classes = [AllowAny]
 
+    def get(self, request):
+        teams = Team.objects.all().order_by("name")
+
+        return Response(
+            [
+                {
+                    "id": team.id,
+                    "name": team.name,
+                    "description": team.description,
+                }
+                for team in teams
+            ],
+            status=status.HTTP_200_OK,
+        )
+
     def post(self, request):
         serializer = TeamSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
