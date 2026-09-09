@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Activity, Check, Eye, Plus, RefreshCw, UserCheck, UserX } from 'lucide-react'
+import { Activity, Check, Eye, Plus, RefreshCw, Trash2, UserCheck, UserX, Users } from 'lucide-react'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { StatusBadge } from '@/components/ui/StatusBadge'
@@ -87,6 +87,136 @@ function SecretAccessLogSection({ logs }: { logs: SecretAccessLog[] }) {
           </div>
         </div>
       )}
+    </section>
+  )
+}
+
+function TeamManagementSection({
+  teams,
+  teamMemberCounts,
+  teamName,
+  teamDescription,
+  isCreatingTeam,
+  deletingTeamId,
+  onTeamNameChange,
+  onTeamDescriptionChange,
+  onCreateTeam,
+  onDeleteTeam,
+}: {
+  teams: Team[]
+  teamMemberCounts: Record<string, number>
+  teamName: string
+  teamDescription: string
+  isCreatingTeam: boolean
+  deletingTeamId: string | null
+  onTeamNameChange: (value: string) => void
+  onTeamDescriptionChange: (value: string) => void
+  onCreateTeam: () => void
+  onDeleteTeam: (teamId: string) => void
+}) {
+  return (
+    <section className="glass rounded-3xl border border-[var(--color-border)]/80 bg-[var(--color-panel)]/70 p-6 shadow-[0_18px_64px_rgba(2,8,23,0.45)]">
+      <div className="flex items-start justify-between gap-4 border-b border-[var(--color-border)]/80 pb-4">
+        <div className="flex items-center gap-3">
+          <span className="rounded-2xl border border-[var(--color-border-glow)] bg-[var(--color-primary)]/10 p-3 text-[var(--color-primary)]">
+            <Users size={18} />
+          </span>
+          <div>
+            <h2 className="text-lg font-semibold tracking-tight text-[var(--color-text)]">Team management</h2>
+            <p className="text-sm text-[var(--color-text-muted)]">
+              Create vault teams and remove obsolete groups from the access model.
+            </p>
+          </div>
+        </div>
+        <StatusBadge variant="active" label={`${teams.length} teams`} />
+      </div>
+
+      <div className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.25fr)]">
+        <div className="rounded-2xl border border-[var(--color-border)]/80 bg-[var(--color-surface)]/70 p-5">
+          <h3 className="text-sm font-semibold uppercase tracking-[0.18em] text-[var(--color-text-dim)]">Create team</h3>
+          <div className="mt-4 space-y-4">
+            <div className="space-y-2">
+              <label className="text-xs uppercase tracking-[0.16em] text-[var(--color-text-dim)]" htmlFor="team-name">
+                Team name
+              </label>
+              <input
+                id="team-name"
+                type="text"
+                value={teamName}
+                onChange={(event) => onTeamNameChange(event.target.value)}
+                disabled={isCreatingTeam}
+                placeholder="Blue Team"
+                className="w-full rounded-2xl border border-[var(--color-border)] bg-[var(--color-panel)]/80 px-3 py-2.5 text-sm text-[var(--color-text)] placeholder:text-[var(--color-text-dim)] transition-all focus:border-[var(--color-primary)] focus:outline-none focus:shadow-[0_0_0_2px_rgba(0,212,255,0.3)] disabled:cursor-not-allowed disabled:opacity-60"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs uppercase tracking-[0.16em] text-[var(--color-text-dim)]" htmlFor="team-description">
+                Description
+              </label>
+              <textarea
+                id="team-description"
+                value={teamDescription}
+                onChange={(event) => onTeamDescriptionChange(event.target.value)}
+                disabled={isCreatingTeam}
+                rows={4}
+                placeholder="Incident response operators with access to shared remediation secrets."
+                className="w-full rounded-2xl border border-[var(--color-border)] bg-[var(--color-panel)]/80 px-3 py-2.5 text-sm text-[var(--color-text)] placeholder:text-[var(--color-text-dim)] transition-all focus:border-[var(--color-primary)] focus:outline-none focus:shadow-[0_0_0_2px_rgba(0,212,255,0.3)] disabled:cursor-not-allowed disabled:opacity-60"
+              />
+            </div>
+            <button
+              type="button"
+              onClick={onCreateTeam}
+              disabled={isCreatingTeam || teamName.trim().length === 0}
+              className="inline-flex items-center justify-center gap-2 rounded-2xl border border-[var(--color-primary)]/40 bg-[var(--color-primary)]/10 px-4 py-2.5 text-sm font-medium text-[var(--color-primary)] transition-all duration-200 hover:bg-[var(--color-primary)]/16 hover:shadow-[0_0_18px_rgba(0,212,255,0.22)] disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <Plus size={16} />
+              Add team
+            </button>
+          </div>
+        </div>
+
+        <div className="rounded-2xl border border-[var(--color-border)]/80 bg-[var(--color-surface)]/70">
+          <div className="flex items-center justify-between border-b border-[var(--color-border)]/80 px-5 py-4">
+            <h3 className="text-sm font-semibold uppercase tracking-[0.18em] text-[var(--color-text-dim)]">Existing teams</h3>
+            <span className="text-xs text-[var(--color-text-dim)]">Assignments update automatically when a team is removed.</span>
+          </div>
+
+          {teams.length === 0 ? (
+            <div className="px-5 py-10 text-center text-sm text-[var(--color-text-dim)]">
+              No teams configured yet.
+            </div>
+          ) : (
+            <div className="divide-y divide-[var(--color-border)]/60">
+              {teams.map((team) => {
+                const isDeleting = deletingTeamId === team.id
+
+                return (
+                  <div key={team.id} className="flex flex-col gap-4 px-5 py-4 lg:flex-row lg:items-start lg:justify-between">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="text-sm font-medium text-[var(--color-text)]">{team.name}</p>
+                        <StatusBadge variant="active" label={`${teamMemberCounts[team.id] ?? 0} members`} />
+                      </div>
+                      <p className="mt-2 text-sm text-[var(--color-text-muted)]">
+                        {team.description?.trim() || 'No description provided.'}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => onDeleteTeam(team.id)}
+                      disabled={isCreatingTeam || deletingTeamId !== null}
+                      className="inline-flex items-center justify-center gap-2 self-start rounded-2xl border border-[var(--color-danger)]/40 bg-[var(--color-danger)]/10 px-4 py-2 text-sm font-medium text-[var(--color-danger)] transition-all duration-200 hover:bg-[var(--color-danger)]/16 hover:shadow-[0_0_18px_rgba(239,68,68,0.2)] disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      <Trash2 size={15} />
+                      {isDeleting ? 'Removing…' : 'Remove team'}
+                    </button>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      </div>
     </section>
   )
 }
@@ -327,11 +457,15 @@ export function ControlPanelPage() {
   const [deactivatedUsers, setDeactivatedUsers] = useState<User[]>([])
   const [secretAccessLogs, setSecretAccessLogs] = useState<SecretAccessLog[]>([])
   const [teams, setTeams] = useState<Team[]>([])
+  const [teamName, setTeamName] = useState('')
+  const [teamDescription, setTeamDescription] = useState('')
   const [editingUserId, setEditingUserId] = useState<string | null>(null)
   const [deactivationReasons, setDeactivationReasons] = useState<Record<string, string>>({})
   const [isLoading, setIsLoading] = useState(true)
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [pendingActionUserId, setPendingActionUserId] = useState<string | null>(null)
+  const [deletingTeamId, setDeletingTeamId] = useState<string | null>(null)
+  const [isCreatingTeam, setIsCreatingTeam] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const fetchUsers = async (showLoader: boolean) => {
@@ -358,7 +492,6 @@ export function ControlPanelPage() {
       setActiveUsers(Array.isArray(activeResponse.data) ? activeResponse.data : [])
       setDeactivatedUsers(Array.isArray(deactivatedResponse.data) ? deactivatedResponse.data : [])
       setTeams(Array.isArray(teamsResponse.data) ? teamsResponse.data : [])
-      console.log('logsResponse.data', logsResponse.data)
       setSecretAccessLogs(Array.isArray(logsResponse.data) ? logsResponse.data : [])
     } catch {
       setError('Unable to load user control data right now.')
@@ -436,6 +569,56 @@ export function ControlPanelPage() {
     }
   }
 
+  const handleCreateTeam = async () => {
+    const normalizedTeamName = teamName.trim()
+    const normalizedDescription = teamDescription.trim()
+
+    if (!normalizedTeamName) {
+      setError('Team name is required.')
+      return
+    }
+
+    setIsCreatingTeam(true)
+    setError(null)
+
+    try {
+      await api.post('/users/teams/', {
+        name: normalizedTeamName,
+        description: normalizedDescription || null,
+      })
+
+      setTeamName('')
+      setTeamDescription('')
+      await fetchUsers(false)
+    } catch {
+      setError('Unable to create the new team.')
+    } finally {
+      setIsCreatingTeam(false)
+    }
+  }
+
+  const handleDeleteTeam = async (teamId: string) => {
+    setDeletingTeamId(teamId)
+    setError(null)
+
+    try {
+      await api.delete(`/users/teams/${teamId}/`)
+      await fetchUsers(false)
+    } catch {
+      setError('Unable to remove the selected team.')
+    } finally {
+      setDeletingTeamId(null)
+    }
+  }
+
+  const teamMemberCounts = [...activeUsers, ...deactivatedUsers].reduce<Record<string, number>>((counts, listedUser) => {
+    for (const team of listedUser.teams ?? []) {
+      counts[team.id] = (counts[team.id] ?? 0) + 1
+    }
+
+    return counts
+  }, {})
+
   return (
     <div className="relative h-screen overflow-x-hidden overflow-y-auto bg-[var(--color-bg)] px-4 py-8 text-[var(--color-text)] sm:px-6 lg:px-8">
       <div className="pointer-events-none absolute inset-0">
@@ -507,6 +690,22 @@ export function ControlPanelPage() {
           </div>
         ) : (
           <div className="grid gap-6 xl:grid-cols-1">
+            <TeamManagementSection
+              teams={teams}
+              teamMemberCounts={teamMemberCounts}
+              teamName={teamName}
+              teamDescription={teamDescription}
+              isCreatingTeam={isCreatingTeam}
+              deletingTeamId={deletingTeamId}
+              onTeamNameChange={setTeamName}
+              onTeamDescriptionChange={setTeamDescription}
+              onCreateTeam={() => {
+                void handleCreateTeam()
+              }}
+              onDeleteTeam={(teamId) => {
+                void handleDeleteTeam(teamId)
+              }}
+            />
             <UserSection
               title="Active users"
               description="Accounts currently enabled for authentication and vault access."

@@ -149,6 +149,15 @@ class TeamsView(APIView):
             },
             status=status.HTTP_201_CREATED,
         )
+
+
+class TeamView(APIView):
+    permission_classes = [AllowAny]
+
+    def delete(self, request, id):
+        team = get_object_or_404(Team, id=id)
+        team.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
     
 class UserTeamView(APIView):
     permission_classes = [AllowAny]
