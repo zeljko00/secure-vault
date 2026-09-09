@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from apps.user_secrets.models import Secret, SharedSecret
+from apps.user_secrets.models import Secret, SharedSecret, SecretAccessLog
 from django.utils import timezone
 
 class SecretValueField(serializers.Field):
@@ -79,4 +79,23 @@ class ReceivedSharedSecretSerializer(serializers.ModelSerializer):
             "owner_username",
             "sharing_expires_at",
             "sharing_revoked",
+        ]
+        
+class SecretAccessLogSerializer(serializers.ModelSerializer):
+    secret_id = serializers.UUIDField(source="secret.id", read_only=True)
+    secret_label = serializers.CharField(source="secret.label", read_only=True)
+    accessed_by_id = serializers.UUIDField(source="user.id", read_only=True)
+    accessed_by_username = serializers.CharField(source="user.username", read_only=True)
+    
+    class Meta:
+        model = SecretAccessLog
+        fields = [
+            "id",
+            "secret_id",
+            "secret_label",
+            "accessed_by_id",
+            "accessed_by_username",
+            "timestamp",
+            "ip_address",
+            "details",
         ]

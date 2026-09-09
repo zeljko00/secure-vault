@@ -34,15 +34,14 @@ class AccessLog(models.Model):
     timestamp = models.DateTimeField(auto_now_add=True, editable=False)
     ip_address = models.GenericIPAddressField(blank=True, null=True)
     details = models.TextField(blank=True, null=True)
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    secret = models.ForeignKey(Secret, on_delete=models.SET_NULL, null=True, blank=True)
 
     class Meta:
         abstract = True
         
 class HoneypotSecretAccessLog(AccessLog):
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    secret = models.ForeignKey(Secret, on_delete=models.SET_NULL, null=True, blank=True)
     user = models.ForeignKey('users.User', on_delete=models.SET_NULL, null=True, blank=True)
     
-class SharedSecretAccessLog(AccessLog):
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    secret = models.ForeignKey(SharedSecret, on_delete=models.CASCADE, null=False, blank=False)
+class SecretAccessLog(AccessLog):
+    user = models.ForeignKey('users.User', on_delete=models.CASCADE, null=True, blank=True)

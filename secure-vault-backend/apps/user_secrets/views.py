@@ -8,7 +8,7 @@ from rest_framework.response import Response
 from rest_framework import status
 from redis.exceptions import RedisError
 
-from apps.user_secrets.models import Secret, SharedSecret
+from apps.user_secrets.models import Secret, SharedSecret, SecretAccessLog
 from apps.user_secrets.serializers import (
     SecretSerializer,
     OwnedSharedSecretSerializer,
@@ -137,6 +137,11 @@ class SharedSecretView(APIView):
 
         shared = get_object_or_404(
             SharedSecret, id=id
+        )
+        SecretAccessLog.objects.create(
+            secret=shared.secret,
+            user_id=request_user,
+            ip_address=request.META.get("REMOTE_ADDR"),
         )
         if str(request_user) != str(shared.sharing_with.id):
             return Response(status=status.HTTP_403_FORBIDDEN)
