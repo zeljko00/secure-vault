@@ -1,11 +1,9 @@
-import json
-
 from django.db.models import Q
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
-from rest_framework.views import APIView
-from rest_framework.response import Response
 from rest_framework import status
+from rest_framework.response import Response
+from rest_framework.views import APIView
 from redis.exceptions import RedisError
 
 from apps.user_secrets.models import Secret, SharedSecret, SecretAccessLog
@@ -14,9 +12,17 @@ from apps.user_secrets.serializers import (
     OwnedSharedSecretSerializer,
     SharedSecretSerializer,
     ReceivedSharedSecretSerializer,
+    SecretAccessLogSerializer,
 )
 from apps.users.models import User
 from util.redis_client import get_redis_client
+
+
+def get_request_user(request):
+    user_id = request.query_params.get("user")
+    if not user_id:
+        return None
+    return get_object_or_404(User, id=user_id)
 
 
 class MySecretsView(APIView):
@@ -32,6 +38,26 @@ class MySecretsView(APIView):
         user = get_object_or_404(User, id=user_id)
         secrets = Secret.objects.filter(owner=user)
         serializer = SecretSerializer(secrets, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+class SecretAccessLogsView(APIView):
+    def get(self, request):
+        request_user = get_request_user(request)
+        if request_user is None:
+            return Response(
+                {"detail": "user query parameter is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if request_user.role != "admin":
+            return Response(status=status.HTTP_403_FORBIDDEN)
+
+        access_logs = (
+            SecretAccessLog.objects.select_related("secret", "secret__owner", "user")
+            .order_by("-timestamp")
+        )
+        serializer = SecretAccessLogSerializer(access_logs, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
 

@@ -71,3 +71,16 @@ export interface AuditEntry {
   /** hash of this entry (chain integrity) */
   hash?: string
 }
+
+export interface SecretAccessLog {
+  id: string
+  secret_id?: string | null
+  secret_label?: string | null
+  secret_type?: SecretType | null
+  secret_owner_username?: string | null
+  accessed_by_id?: string | null
+  accessed_by_username?: string | null
+  timestamp: string
+  ip_address?: string | null
+  details?: string | null
+}

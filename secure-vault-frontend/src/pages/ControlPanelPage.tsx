@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
-import { Activity, Check, Plus, RefreshCw, UserCheck, UserX } from 'lucide-react'
+import { Activity, Check, Eye, Plus, RefreshCw, UserCheck, UserX } from 'lucide-react'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { StatusBadge } from '@/components/ui/StatusBadge'
-import type { Team, User, UserRole } from '@/types'
+import { useAuthStore } from '@/stores/authStore'
+import type { SecretAccessLog, Team, User, UserRole } from '@/types'
 
 const EDITABLE_ROLE_OPTIONS: Array<{ value: Exclude<UserRole, 'guest'>; label: string }> = [
   { value: 'dev', label: 'Developer' },
@@ -22,6 +23,72 @@ function formatDateTime(value: string): string {
 
 function getDeactivationRecord(user: User) {
   return user.deactivated?.[0]
+}
+
+function SecretAccessLogSection({ logs }: { logs: SecretAccessLog[] }) {
+  return (
+    <section className="glass rounded-3xl border border-[var(--color-border)]/80 bg-[var(--color-panel)]/70 p-6 shadow-[0_18px_64px_rgba(2,8,23,0.45)]">
+      <div className="flex items-start justify-between gap-4 border-b border-[var(--color-border)]/80 pb-4">
+        <div className="flex items-center gap-3">
+          <span className="rounded-2xl border border-[var(--color-border-glow)] bg-[var(--color-primary)]/10 p-3 text-[var(--color-primary)]">
+            <Eye size={18} />
+          </span>
+          <div>
+            <h2 className="text-lg font-semibold tracking-tight text-[var(--color-text)]">Secret access logs</h2>
+            <p className="text-sm text-[var(--color-text-muted)]">
+              Shared secret retrieval events recorded for administrative review.
+            </p>
+          </div>
+        </div>
+        <StatusBadge variant="active" label={`${logs.length} events`} />
+      </div>
+
+      {logs.length === 0 ? (
+        <div className="mt-6 rounded-2xl border border-dashed border-[var(--color-border)] bg-[var(--color-surface)]/70 px-4 py-10 text-center text-sm text-[var(--color-text-dim)]">
+          No secret access activity has been recorded yet.
+        </div>
+      ) : (
+        <div className="mt-6 overflow-x-auto rounded-2xl border border-[var(--color-border)]/80 bg-[var(--color-surface)]/70">
+          <div className="min-w-[960px]">
+            <div className="grid grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)_minmax(0,0.9fr)_minmax(0,1fr)_minmax(0,0.9fr)] gap-4 border-b border-[var(--color-border)]/80 px-5 py-3 text-[11px] uppercase tracking-[0.18em] text-[var(--color-text-dim)]">
+              <span>Secret</span>
+              <span>Owner</span>
+              <span>Accessed by</span>
+              <span>Timestamp</span>
+              <span>Origin</span>
+            </div>
+            <div>
+              {logs.map((log) => (
+                <div
+                  key={log.id}
+                  className="grid grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)_minmax(0,0.9fr)_minmax(0,1fr)_minmax(0,0.9fr)] gap-4 border-b border-[var(--color-border)]/60 px-5 py-4 last:border-b-0"
+                >
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <p className="truncate text-sm font-medium text-[var(--color-text)]">
+                        {log.secret_label ?? 'Secret removed'}
+                      </p>
+                      {log.secret_type ? <StatusBadge variant={log.secret_type} /> : <StatusBadge variant="other" label="Unknown" />}
+                    </div>
+                  </div>
+                  <div className="min-w-0 text-sm text-[var(--color-text-muted)]">
+                    <p className="truncate">{log.secret_owner_username ?? 'Unknown owner'}</p>
+                  </div>
+                  <div className="min-w-0 text-sm text-[var(--color-text-muted)]">
+                    <p className="truncate">{log.accessed_by_username ?? 'Unknown user'}</p>
+                  </div>
+                  <div className="text-sm text-[var(--color-text-muted)]">{formatDateTime(log.timestamp)}</div>
+                  <div className="min-w-0 text-sm text-[var(--color-text-muted)]">
+                    <p className="truncate font-mono text-xs text-[var(--color-text-dim)]">{log.ip_address ?? 'Unknown IP'}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+    </section>
+  )
 }
 
 function UserSection({
@@ -255,8 +322,10 @@ function UserSection({
 }
 
 export function ControlPanelPage() {
+  const user = useAuthStore((state) => state.user)
   const [activeUsers, setActiveUsers] = useState<User[]>([])
   const [deactivatedUsers, setDeactivatedUsers] = useState<User[]>([])
+  const [secretAccessLogs, setSecretAccessLogs] = useState<SecretAccessLog[]>([])
   const [teams, setTeams] = useState<Team[]>([])
   const [editingUserId, setEditingUserId] = useState<string | null>(null)
   const [deactivationReasons, setDeactivationReasons] = useState<Record<string, string>>({})
@@ -275,15 +344,22 @@ export function ControlPanelPage() {
     setError(null)
 
     try {
-      const [activeResponse, deactivatedResponse, teamsResponse] = await Promise.all([
+      if (!user?.id) {
+        throw new Error('Missing authenticated admin context.')
+      }
+
+      const [activeResponse, deactivatedResponse, teamsResponse, logsResponse] = await Promise.all([
         api.get<User[]>('/users/', { params: { active: '1' } }),
         api.get<User[]>('/users/', { params: { active: '0' } }),
         api.get<Team[]>('/users/teams/'),
+        api.get<SecretAccessLog[]>('/secrets/access-logs/', { params: { user: user.id } }),
       ])
 
       setActiveUsers(Array.isArray(activeResponse.data) ? activeResponse.data : [])
       setDeactivatedUsers(Array.isArray(deactivatedResponse.data) ? deactivatedResponse.data : [])
       setTeams(Array.isArray(teamsResponse.data) ? teamsResponse.data : [])
+      console.log('logsResponse.data', logsResponse.data)
+      setSecretAccessLogs(Array.isArray(logsResponse.data) ? logsResponse.data : [])
     } catch {
       setError('Unable to load user control data right now.')
     } finally {
@@ -294,7 +370,7 @@ export function ControlPanelPage() {
 
   useEffect(() => {
     void fetchUsers(true)
-  }, [])
+  }, [user?.id])
 
   const handleToggleEditUser = (userId: string) => {
     setEditingUserId((current) => (current === userId ? null : userId))
@@ -361,7 +437,7 @@ export function ControlPanelPage() {
   }
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-[var(--color-bg)] px-4 py-8 text-[var(--color-text)] sm:px-6 lg:px-8">
+    <div className="relative h-screen overflow-x-hidden overflow-y-auto bg-[var(--color-bg)] px-4 py-8 text-[var(--color-text)] sm:px-6 lg:px-8">
       <div className="pointer-events-none absolute inset-0">
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(0,212,255,0.14),_transparent_35%),radial-gradient(circle_at_bottom_right,_rgba(124,58,237,0.14),_transparent_28%)]" />
         <div className="absolute inset-0 opacity-30 [background-image:radial-gradient(circle_at_1px_1px,_var(--color-border)_1px,_transparent_0)] [background-size:26px_26px]" />
@@ -389,7 +465,7 @@ export function ControlPanelPage() {
                 )}
               >
                 <RefreshCw size={16} className={cn(isRefreshing && 'animate-spin')} />
-                Refresh users
+                Refresh view
               </button>
             </div>
           </div>
@@ -477,6 +553,7 @@ export function ControlPanelPage() {
                 void handleToggleTeam(userId, teamId, isAssigned)
               }}
             />
+            <SecretAccessLogSection logs={secretAccessLogs} />
           </div>
         )}
       </div>
