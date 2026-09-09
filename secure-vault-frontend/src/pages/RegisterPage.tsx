@@ -18,20 +18,39 @@ import { cn } from '@/lib/utils'
 import type { User } from '@/types'
 
 const MASTER_PASSWORD_POPUP_DURATION_S = 20
+const DEFAULT_USER_PASSWORD_MIN_LENGTH = 100
+const DEFAULT_MASTER_PASSWORD_LENGTH = 256
 
-const schema = z
-  .object({
-    username: z.string().min(3, 'Username must be at least 3 characters'),
-    email: z.string().email('Enter a valid email address'),
-    password: z.string().min(8, 'Password must be at least 8 characters'),
-    confirmPassword: z.string().min(1, 'Please confirm your password'),
-  })
-  .refine((data) => data.password === data.confirmPassword, {
-    message: 'Passwords do not match',
-    path: ['confirmPassword'],
-  })
+type PublicSettings = {
+  user_password_min_length?: string
+  master_password_length?: string
+}
 
-type FormValues = z.infer<typeof schema>
+function parsePositiveInteger(value: string | undefined, fallback: number): number {
+  const parsed = Number.parseInt(value ?? '', 10)
+
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return fallback
+  }
+
+  return parsed
+}
+
+function buildSchema(userPasswordMinLength: number) {
+  return z
+    .object({
+      username: z.string().min(3, 'Username must be at least 3 characters'),
+      email: z.string().email('Enter a valid email address'),
+      password: z.string().min(userPasswordMinLength, `Password must be at least ${userPasswordMinLength} characters`),
+      confirmPassword: z.string().min(1, 'Please confirm your password'),
+    })
+    .refine((data) => data.password === data.confirmPassword, {
+      message: 'Passwords do not match',
+      path: ['confirmPassword'],
+    })
+}
+
+type FormValues = z.infer<ReturnType<typeof buildSchema>>
 
 type PrivateKeyBackupFile = {
   version: number
@@ -63,8 +82,47 @@ export function RegisterPage() {
   const [isGeneratingKeys, setIsGeneratingKeys] = useState(false)
   const [masterPassword, setMasterPassword] = useState<string | null>(null)
   const [privateKeyBackup, setPrivateKeyBackup] = useState<PrivateKeyBackupFile | null>(null)
+  const [pendingRegisteredUser, setPendingRegisteredUser] = useState<User | null>(null)
   const [secondsLeft, setSecondsLeft] = useState(0)
   const [copyStatus, setCopyStatus] = useState<'idle' | 'success' | 'error'>('idle')
+  const [userPasswordMinLength, setUserPasswordMinLength] = useState(DEFAULT_USER_PASSWORD_MIN_LENGTH)
+  const [masterPasswordLength, setMasterPasswordLength] = useState(DEFAULT_MASTER_PASSWORD_LENGTH)
+
+  useEffect(() => {
+    let cancelled = false
+
+    const loadPasswordPolicy = async () => {
+      try {
+        const response = await api.get<PublicSettings>('/settings/public/')
+        if (cancelled) {
+          return
+        }
+
+        setUserPasswordMinLength(
+          parsePositiveInteger(response.data.user_password_min_length, DEFAULT_USER_PASSWORD_MIN_LENGTH),
+        )
+        setMasterPasswordLength(
+          parsePositiveInteger(
+            response.data.master_password_length ?? response.data.master_password_length,
+            DEFAULT_MASTER_PASSWORD_LENGTH,
+          ),
+        )
+      } catch {
+        if (cancelled) {
+          return
+        }
+
+        setUserPasswordMinLength(DEFAULT_USER_PASSWORD_MIN_LENGTH)
+        setMasterPasswordLength(DEFAULT_MASTER_PASSWORD_LENGTH)
+      }
+    }
+
+    void loadPasswordPolicy()
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   useEffect(() => {
     if (!masterPassword) {
@@ -79,13 +137,17 @@ export function RegisterPage() {
       setSecondsLeft(remaining)
       if (remaining === 0) {
         window.clearInterval(timer)
+        if (pendingRegisteredUser) {
+          setUser(pendingRegisteredUser)
+          setMfaPending(false)
+        }
         setMasterPassword(null)
         navigate('/')
       }
     }, 250)
 
     return () => window.clearInterval(timer)
-  }, [masterPassword, navigate])
+  }, [masterPassword, navigate, pendingRegisteredUser, setMfaPending, setUser])
 
   const handleCopyMasterPassword = async () => {
     if (!masterPassword) {
@@ -111,7 +173,7 @@ export function RegisterPage() {
     register,
     handleSubmit,
     formState: { errors, isSubmitting },
-  } = useForm<FormValues>({ resolver: zodResolver(schema) })
+  } = useForm<FormValues>({ resolver: zodResolver(buildSchema(userPasswordMinLength)) })
 
   const onSubmit = async (data: FormValues) => {
     setApiError(null)
@@ -129,9 +191,8 @@ export function RegisterPage() {
       }
 
       const response = await api.post<User>('/users/', user)
-      setUser(response.data)
-      setMfaPending(false)
-      const generatedMasterPassword = generateMasterPassword()
+      setPendingRegisteredUser(response.data)
+      const generatedMasterPassword = generateMasterPassword(masterPasswordLength)
       const encryptedPrivateKey = await encryptPrivateKeyForStorage(keyPair.privateKey, generatedMasterPassword)
       await storeEncryptedPrivateKey(response.data.id, encryptedPrivateKey)
 
@@ -238,7 +299,7 @@ export function RegisterPage() {
               type="password"
               autoComplete="new-password"
               className={inputCls}
-              placeholder="password"
+              placeholder={`minimum ${userPasswordMinLength} characters`}
             />
           </Field>
 

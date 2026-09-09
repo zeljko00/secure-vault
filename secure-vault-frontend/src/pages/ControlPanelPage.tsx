@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Activity, Check, Eye, Plus, RefreshCw, Trash2, UserCheck, UserX, Users } from 'lucide-react'
+import { Activity, Check, Eye, Plus, RefreshCw, Settings2, Trash2, UserCheck, UserX, Users } from 'lucide-react'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { StatusBadge } from '@/components/ui/StatusBadge'
@@ -10,6 +10,62 @@ const EDITABLE_ROLE_OPTIONS: Array<{ value: Exclude<UserRole, 'guest'>; label: s
   { value: 'dev', label: 'Developer' },
   { value: 'tl', label: 'Team Lead' },
 ]
+
+const MANAGED_SETTINGS = [
+  {
+    key: 'user_password_min_length',
+    label: 'Minimum user account password length',
+    description: 'Applies to the login password for SecureVault accounts, separate from the client-side master password policy.',
+    placeholder: '12',
+    inputMode: 'numeric' as const,
+  },
+  {
+    key: 'master_password_length',
+    label: 'Master password length',
+    description: 'Client-side registration and password reset flows should reject weaker master passwords.',
+    placeholder: '16',
+    inputMode: 'numeric' as const,
+  },
+  {
+    key: 'secret_rotation_days',
+    label: 'Secret rotation interval (days)',
+    description: 'Used by policy and reminder flows to flag secrets that should be rotated.',
+    placeholder: '90',
+    inputMode: 'numeric' as const,
+  },
+  {
+    key: 'session_ttl_minutes',
+    label: 'Session TTL (minutes)',
+    description: 'Defines how long an authenticated session should remain valid before rotation or re-authentication.',
+    placeholder: '30',
+    inputMode: 'numeric' as const,
+  },
+  {
+    key: 'hidden_endpoint_enabled',
+    label: 'Hidden endpoint enabled',
+    description: 'Controls whether the intentionally hidden testing endpoint is enabled for security demonstrations.',
+    placeholder: 'false',
+    inputMode: 'text' as const,
+  },
+]
+
+function normalizeSettings(values?: Record<string, unknown>): Record<string, string> {
+  const normalizedValues = Object.fromEntries(MANAGED_SETTINGS.map((setting) => [setting.key, ''])) as Record<string, string>
+
+  if (!values) {
+    return normalizedValues
+  }
+
+  for (const [key, value] of Object.entries(values)) {
+    normalizedValues[key] = value == null ? '' : String(value)
+  }
+
+  return normalizedValues
+}
+
+function isEnabledSetting(value?: string): boolean {
+  return value?.trim().toLowerCase() === 'true'
+}
 
 function formatDateTime(value: string): string {
   const parsed = new Date(value)
@@ -84,6 +140,148 @@ function SecretAccessLogSection({ logs }: { logs: SecretAccessLog[] }) {
                 </div>
               ))}
             </div>
+          </div>
+        </div>
+      )}
+    </section>
+  )
+}
+
+function SettingsManagementSection({
+  settingsValues,
+  savingSettingKey,
+  onSettingChange,
+  onSaveSetting,
+}: {
+  settingsValues: Record<string, string>
+  savingSettingKey: string | null
+  onSettingChange: (key: string, value: string) => void
+  onSaveSetting: (key: string) => void
+}) {
+  const additionalSettingKeys = Object.keys(settingsValues)
+    .filter((key) => !MANAGED_SETTINGS.some((setting) => setting.key === key))
+    .sort((left, right) => left.localeCompare(right))
+
+  return (
+    <section className="glass rounded-3xl border border-[var(--color-border)]/80 bg-[var(--color-panel)]/70 p-6 shadow-[0_18px_64px_rgba(2,8,23,0.45)]">
+      <div className="flex items-start justify-between gap-4 border-b border-[var(--color-border)]/80 pb-4">
+        <div className="flex items-center gap-3">
+          <span className="rounded-2xl border border-[var(--color-border-glow)] bg-[var(--color-primary)]/10 p-3 text-[var(--color-primary)]">
+            <Settings2 size={18} />
+          </span>
+          <div>
+            <h2 className="text-lg font-semibold tracking-tight text-[var(--color-text)]">Security settings</h2>
+            <p className="text-sm text-[var(--color-text-muted)]">
+              Update policy values that govern password strength, secret rotation, and session lifetime.
+            </p>
+          </div>
+        </div>
+        <StatusBadge variant="active" label={`${Object.keys(settingsValues).length} settings`} />
+      </div>
+
+      <div className="mt-6 grid gap-4 lg:grid-cols-3">
+        {MANAGED_SETTINGS.map((setting) => {
+          const isSaving = savingSettingKey === setting.key
+          const isHiddenEndpointToggle = setting.key === 'hidden_endpoint_enabled'
+          const isEnabled = isEnabledSetting(settingsValues[setting.key])
+
+          return (
+            <div key={setting.key} className="rounded-2xl border border-[var(--color-border)]/80 bg-[var(--color-surface)]/70 p-5">
+              <div className="space-y-2">
+                <h3 className="text-sm font-semibold text-[var(--color-text)]">{setting.label}</h3>
+                <p className="text-sm text-[var(--color-text-muted)]">{setting.description}</p>
+              </div>
+
+              <div className="mt-4 space-y-3">
+                {isHiddenEndpointToggle ? (
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={isEnabled}
+                    onClick={() => onSettingChange(setting.key, isEnabled ? 'false' : 'true')}
+                    disabled={savingSettingKey !== null && !isSaving}
+                    className={cn(
+                      'flex w-full items-center justify-between rounded-2xl border px-4 py-3 text-sm transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-60',
+                      isEnabled
+                        ? 'border-[var(--color-accent)]/40 bg-[var(--color-accent)]/10 text-[var(--color-accent)]'
+                        : 'border-[var(--color-border)] bg-[var(--color-panel)]/80 text-[var(--color-text-muted)]',
+                    )}
+                  >
+                    <span>{isEnabled ? 'Enabled' : 'Disabled'}</span>
+                    <span
+                      className={cn(
+                        'relative inline-flex h-7 w-12 items-center rounded-full border transition-colors duration-200',
+                        isEnabled
+                          ? 'border-[var(--color-accent)]/40 bg-[var(--color-accent)]/20'
+                          : 'border-[var(--color-border)] bg-[var(--color-panel)]',
+                      )}
+                    >
+                      <span
+                        className={cn(
+                          'absolute h-5 w-5 rounded-full transition-transform duration-200',
+                          isEnabled
+                            ? 'translate-x-6 bg-[var(--color-accent)]'
+                            : 'translate-x-1 bg-[var(--color-text-dim)]',
+                        )}
+                      />
+                    </span>
+                  </button>
+                ) : (
+                  <input
+                    type="text"
+                    inputMode={setting.inputMode}
+                    value={settingsValues[setting.key] ?? ''}
+                    onChange={(event) => onSettingChange(setting.key, event.target.value)}
+                    placeholder={setting.placeholder}
+                    disabled={savingSettingKey !== null && !isSaving}
+                    className="w-full rounded-2xl border border-[var(--color-border)] bg-[var(--color-panel)]/80 px-3 py-2.5 text-sm text-[var(--color-text)] placeholder:text-[var(--color-text-dim)] transition-all focus:border-[var(--color-primary)] focus:outline-none focus:shadow-[0_0_0_2px_rgba(0,212,255,0.3)] disabled:cursor-not-allowed disabled:opacity-60"
+                  />
+                )}
+                <button
+                  type="button"
+                  onClick={() => onSaveSetting(setting.key)}
+                  disabled={savingSettingKey !== null}
+                  className="inline-flex items-center justify-center rounded-2xl border border-[var(--color-primary)]/40 bg-[var(--color-primary)]/10 px-4 py-2 text-sm font-medium text-[var(--color-primary)] transition-all duration-200 hover:bg-[var(--color-primary)]/16 hover:shadow-[0_0_18px_rgba(0,212,255,0.22)] disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {isSaving ? 'Saving…' : 'Save setting'}
+                </button>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+
+      {additionalSettingKeys.length > 0 && (
+        <div className="mt-6 rounded-2xl border border-[var(--color-border)]/80 bg-[var(--color-surface)]/70 p-5">
+          <div className="flex items-center justify-between gap-3 border-b border-[var(--color-border)]/80 pb-3">
+            <h3 className="text-sm font-semibold uppercase tracking-[0.18em] text-[var(--color-text-dim)]">Additional settings</h3>
+            <span className="text-xs text-[var(--color-text-dim)]">Persisted keys not currently mapped to a dedicated control.</span>
+          </div>
+          <div className="mt-4 space-y-4">
+            {additionalSettingKeys.map((key) => {
+              const isSaving = savingSettingKey === key
+
+              return (
+                <div key={key} className="grid gap-3 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.4fr)_auto] lg:items-center">
+                  <p className="font-mono text-xs text-[var(--color-text-dim)]">{key}</p>
+                  <input
+                    type="text"
+                    value={settingsValues[key] ?? ''}
+                    onChange={(event) => onSettingChange(key, event.target.value)}
+                    disabled={savingSettingKey !== null && !isSaving}
+                    className="w-full rounded-2xl border border-[var(--color-border)] bg-[var(--color-panel)]/80 px-3 py-2.5 text-sm text-[var(--color-text)] placeholder:text-[var(--color-text-dim)] transition-all focus:border-[var(--color-primary)] focus:outline-none focus:shadow-[0_0_0_2px_rgba(0,212,255,0.3)] disabled:cursor-not-allowed disabled:opacity-60"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => onSaveSetting(key)}
+                    disabled={savingSettingKey !== null}
+                    className="inline-flex items-center justify-center rounded-2xl border border-[var(--color-primary)]/40 bg-[var(--color-primary)]/10 px-4 py-2 text-sm font-medium text-[var(--color-primary)] transition-all duration-200 hover:bg-[var(--color-primary)]/16 hover:shadow-[0_0_18px_rgba(0,212,255,0.22)] disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {isSaving ? 'Saving…' : 'Save'}
+                  </button>
+                </div>
+              )
+            })}
           </div>
         </div>
       )}
@@ -456,6 +654,7 @@ export function ControlPanelPage() {
   const [activeUsers, setActiveUsers] = useState<User[]>([])
   const [deactivatedUsers, setDeactivatedUsers] = useState<User[]>([])
   const [secretAccessLogs, setSecretAccessLogs] = useState<SecretAccessLog[]>([])
+  const [settingsValues, setSettingsValues] = useState<Record<string, string>>(() => normalizeSettings())
   const [teams, setTeams] = useState<Team[]>([])
   const [teamName, setTeamName] = useState('')
   const [teamDescription, setTeamDescription] = useState('')
@@ -466,6 +665,7 @@ export function ControlPanelPage() {
   const [pendingActionUserId, setPendingActionUserId] = useState<string | null>(null)
   const [deletingTeamId, setDeletingTeamId] = useState<string | null>(null)
   const [isCreatingTeam, setIsCreatingTeam] = useState(false)
+  const [savingSettingKey, setSavingSettingKey] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   const fetchUsers = async (showLoader: boolean) => {
@@ -482,17 +682,19 @@ export function ControlPanelPage() {
         throw new Error('Missing authenticated admin context.')
       }
 
-      const [activeResponse, deactivatedResponse, teamsResponse, logsResponse] = await Promise.all([
+      const [activeResponse, deactivatedResponse, teamsResponse, logsResponse, settingsResponse] = await Promise.all([
         api.get<User[]>('/users/', { params: { active: '1' } }),
         api.get<User[]>('/users/', { params: { active: '0' } }),
         api.get<Team[]>('/users/teams/'),
         api.get<SecretAccessLog[]>('/secrets/access-logs/', { params: { user: user.id } }),
+        api.get<Record<string, string>>('/settings/', { params: { user: user.id } }),
       ])
 
       setActiveUsers(Array.isArray(activeResponse.data) ? activeResponse.data : [])
       setDeactivatedUsers(Array.isArray(deactivatedResponse.data) ? deactivatedResponse.data : [])
       setTeams(Array.isArray(teamsResponse.data) ? teamsResponse.data : [])
       setSecretAccessLogs(Array.isArray(logsResponse.data) ? logsResponse.data : [])
+      setSettingsValues(normalizeSettings(settingsResponse.data))
     } catch {
       setError('Unable to load user control data right now.')
     } finally {
@@ -507,6 +709,13 @@ export function ControlPanelPage() {
 
   const handleToggleEditUser = (userId: string) => {
     setEditingUserId((current) => (current === userId ? null : userId))
+  }
+
+  const handleSettingChange = (key: string, value: string) => {
+    setSettingsValues((current) => ({
+      ...current,
+      [key]: value,
+    }))
   }
 
   const handleDeactivationReasonChange = (userId: string, reason: string) => {
@@ -611,6 +820,38 @@ export function ControlPanelPage() {
     }
   }
 
+  const handleSaveSetting = async (key: string) => {
+    if (!user?.id) {
+      setError('Missing authenticated admin context.')
+      return
+    }
+
+    setSavingSettingKey(key)
+    setError(null)
+
+    try {
+      const response = await api.put<Record<string, string>>(
+        `/settings/${encodeURIComponent(key)}/`,
+        { value: settingsValues[key] ?? '' },
+        { params: { user: user.id } },
+      )
+
+      setSettingsValues((current) => ({
+        ...current,
+        ...Object.fromEntries(
+          Object.entries(response.data).map(([responseKey, responseValue]) => [
+            responseKey,
+            responseValue == null ? '' : String(responseValue),
+          ]),
+        ),
+      }))
+    } catch {
+      setError('Unable to save the selected setting.')
+    } finally {
+      setSavingSettingKey(null)
+    }
+  }
+
   const teamMemberCounts = [...activeUsers, ...deactivatedUsers].reduce<Record<string, number>>((counts, listedUser) => {
     for (const team of listedUser.teams ?? []) {
       counts[team.id] = (counts[team.id] ?? 0) + 1
@@ -690,6 +931,14 @@ export function ControlPanelPage() {
           </div>
         ) : (
           <div className="grid gap-6 xl:grid-cols-1">
+            <SettingsManagementSection
+              settingsValues={settingsValues}
+              savingSettingKey={savingSettingKey}
+              onSettingChange={handleSettingChange}
+              onSaveSetting={(key) => {
+                void handleSaveSetting(key)
+              }}
+            />
             <TeamManagementSection
               teams={teams}
               teamMemberCounts={teamMemberCounts}

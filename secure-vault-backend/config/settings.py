@@ -33,6 +33,7 @@ INSTALLED_APPS = [
     # Custom apps - names must match AppConfig.name
     'apps.users',
     'apps.user_secrets',
+    'apps.settings',
 ]
 
 MIDDLEWARE = [

@@ -74,7 +74,7 @@ class UserLoginView(APIView):
 
     def post(self, request):
         user = User.objects.filter(username=request.data.get("username")).first()
-        if not user or user.password_hash != sha256(request.data.get("password").encode()) or hasattr(user, "deactivation_log"): 
+        if not user or user.password_hash != sha256(request.data.get("password").encode()) or UserDeactivationLog.objects.filter(user=user).exists(): 
             return Response(
                 {"details": "Invalid username or password."},
                 status=status.HTTP_401_UNAUTHORIZED,
@@ -195,7 +195,7 @@ class UserDeactivationView(APIView):
     def put(self, request, id):
         user = get_object_or_404(User, id=id)
 
-        if hasattr(user, "deactivation_log"):
+        if not UserDeactivationLog.objects.filter(user=user).exists():
             return Response(
                 {"detail": "User is already deactivated."},
                 status=status.HTTP_409_CONFLICT,

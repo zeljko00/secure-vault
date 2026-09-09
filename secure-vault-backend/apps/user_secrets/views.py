@@ -6,7 +6,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from redis.exceptions import RedisError
 
-from apps.user_secrets.models import Secret, SharedSecret, SecretAccessLog
+from apps.user_secrets.models import Secret, SharedSecret, SecretAccessLog, HoneypotSecretAccessLog
 from apps.user_secrets.serializers import (
     SecretSerializer,
     OwnedSharedSecretSerializer,
@@ -14,7 +14,8 @@ from apps.user_secrets.serializers import (
     ReceivedSharedSecretSerializer,
     SecretAccessLogSerializer,
 )
-from apps.users.models import User
+from apps.users.models import User, UserDeactivationLog
+from apps.settings.models import Setting
 from util.redis_client import get_redis_client
 
 
@@ -24,6 +25,23 @@ def get_request_user(request):
         return None
     return get_object_or_404(User, id=user_id)
 
+def is_honeypot(secret, user: User, request) -> bool:
+    is_marked = (secret.marker == "honeypot")
+    
+    if is_marked:
+        HoneypotSecretAccessLog.objects.create(
+            secret=secret,
+            user=user,
+            ip_address=request.META.get("X-Forwarded-For", request.META.get("REMOTE_ADDR", "")).split(",")[0].strip(),
+        )
+        
+        if not UserDeactivationLog.objects.filter(user=user).exists():
+            UserDeactivationLog.objects.create(
+                user=user,
+                reason="Accessed honeypot secret",
+            )
+
+    return is_marked
 
 class MySecretsView(APIView):
     def get(self, request):
@@ -80,7 +98,7 @@ class SecretsView(APIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
-class SecretUpdateView(APIView):
+class SecretView(APIView):
     def put(self, request, id):
         secret = get_object_or_404(Secret, id=id)
         request_user_id = request.query_params.get("user")
@@ -91,6 +109,27 @@ class SecretUpdateView(APIView):
             serializer.save()
             return Response(serializer.data)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    def get(self, request, id):
+        # Check if honeypot endpoint is enabled
+        print("Checking if honeypot endpoint is enabled...")
+        enabled = Setting.objects.filter(key="hidden_endpoint_enabled").first()
+        if not enabled or enabled.value != "true":
+            return Response(status=status.HTTP_404_NOT_FOUND)
+
+        user = get_request_user(request)
+        if not user:
+            # Return 404 to avoid revealing endpoint existence
+            return Response(status=status.HTTP_404_NOT_FOUND)
+
+        secret = get_object_or_404(Secret, id=id)
+        
+        # Log honeypot access if marked
+        is_honeypot(secret, user, request)
+        
+        serializer = SecretSerializer(secret)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+    
 
 
 class SecretDeleteView(APIView):
@@ -167,7 +206,7 @@ class SharedSecretView(APIView):
         SecretAccessLog.objects.create(
             secret=shared.secret,
             user_id=request_user,
-            ip_address=request.META.get("REMOTE_ADDR"),
+            ip_address=request.META.get("X-Forwarded-For", request.META.get("REMOTE_ADDR", "")).split(",")[0].strip()
         )
         if str(request_user) != str(shared.sharing_with.id):
             return Response(status=status.HTTP_403_FORBIDDEN)

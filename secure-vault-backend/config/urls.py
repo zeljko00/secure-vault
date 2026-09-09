@@ -7,4 +7,5 @@ urlpatterns = [
     # base URL for users app, includes all URLs defined in apps.users.urls
     path("api/users/", include("apps.users.urls")),
     path("api/secrets/", include("apps.user_secrets.urls")),
+    path("api/settings/", include("apps.settings.urls")),
 ]
