@@ -58,3 +58,6 @@ WHERE to_regclass('public.user_secrets_honeypotsecretaccesslog') IS NOT NULL\gex
 
 SELECT format('GRANT SELECT, INSERT ON TABLE public.users_userdeactivationlog TO %I', :'db_user')
 WHERE to_regclass('public.users_userdeactivationlog') IS NOT NULL\gexec
+
+SELECT format('GRANT SELECT, INSERT, UPDATE ON TABLE public.settings_setting TO %I', :'db_user')
+WHERE to_regclass('public.settings_setting') IS NOT NULL\gexec
