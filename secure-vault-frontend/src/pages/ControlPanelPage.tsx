@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { Activity, Check, Eye, EyeOff, Plus, RefreshCw, Settings2, Trash2, UserCheck, UserX, Users } from 'lucide-react'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
@@ -713,6 +714,8 @@ function UserSection({
 
 export function ControlPanelPage() {
   const user = useAuthStore((state) => state.user)
+  const logout = useAuthStore((state) => state.logout)
+  const navigate = useNavigate()
   const [activeUsers, setActiveUsers] = useState<User[]>([])
   const [deactivatedUsers, setDeactivatedUsers] = useState<User[]>([])
   const [secretAccessLogs, setSecretAccessLogs] = useState<SecretAccessLog[]>([])
@@ -917,6 +920,11 @@ export function ControlPanelPage() {
     }
   }
 
+  const handleLogout = () => {
+    logout()
+    navigate('/login')
+  }
+
   const teamMemberCounts = [...activeUsers, ...deactivatedUsers].reduce<Record<string, number>>((counts, listedUser) => {
     for (const team of listedUser.teams ?? []) {
       counts[team.id] = (counts[team.id] ?? 0) + 1
@@ -955,6 +963,13 @@ export function ControlPanelPage() {
               >
                 <RefreshCw size={16} className={cn(isRefreshing && 'animate-spin')} />
                 Refresh view
+              </button>
+              <button
+                type="button"
+                onClick={handleLogout}
+                className="inline-flex items-center justify-center gap-2 rounded-2xl border border-[var(--color-danger)]/40 bg-[var(--color-danger)]/10 px-4 py-2.5 text-sm font-medium text-[var(--color-danger)] transition-all duration-200 hover:bg-[var(--color-danger)]/16 hover:shadow-[0_0_18px_rgba(239,68,68,0.2)]"
+              >
+                Logout
               </button>
             </div>
           </div>
