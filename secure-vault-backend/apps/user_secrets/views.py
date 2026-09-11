@@ -1,4 +1,5 @@
 from django.db.models import Q
+from django.core.mail import send_mail
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import status
@@ -27,18 +28,50 @@ def get_request_user(request):
 
 def is_honeypot(secret, user: User, request) -> bool:
     is_marked = (secret.marker == "honeypot")
+    ip_address = request.META.get("X-Forwarded-For", request.META.get("REMOTE_ADDR", "")).split(",")[0].strip()
     
     if is_marked:
         HoneypotSecretAccessLog.objects.create(
             secret=secret,
             user=user,
-            ip_address=request.META.get("X-Forwarded-For", request.META.get("REMOTE_ADDR", "")).split(",")[0].strip(),
+            ip_address=ip_address
         )
         
         if not UserDeactivationLog.objects.filter(user=user).exists():
             UserDeactivationLog.objects.create(
                 user=user,
                 reason="Accessed honeypot secret",
+            )
+
+        admin_emails = list(
+            User.objects.filter(role="admin")
+            .exclude(email__isnull=True)
+            .exclude(email__exact="")
+            .values_list("email", flat=True)
+            .distinct()
+        )
+
+        if admin_emails:
+            access_time = timezone.localtime(timezone.now()).strftime("%Y-%m-%d %H:%M:%S %Z")
+            subject = f"[SecureVault] Honeypot accessed: {secret.label}"
+            message = (
+                "A honeypot secret was accessed.\n\n"
+                f"Secret ID: {secret.id}\n"
+                f"Secret label: {secret.label}\n"
+                f"Accessed by: {user.username} ({user.id})\n"
+                f"IP address: {ip_address or 'Unknown'}\n"
+                f"Time: {access_time}\n"
+                f"Endpoint: {request.path}\n"
+            )
+            
+            print(f"Sending honeypot access email to: {', '.join(admin_emails)}")
+
+            send_mail(
+                subject=subject,
+                message=message,
+                from_email=None,
+                recipient_list=admin_emails,
+                fail_silently=True,
             )
 
     return is_marked
