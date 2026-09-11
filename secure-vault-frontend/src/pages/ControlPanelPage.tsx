@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react'
-import { Activity, Check, Eye, Plus, RefreshCw, Settings2, Trash2, UserCheck, UserX, Users } from 'lucide-react'
+import { Activity, Check, Eye, EyeOff, Plus, RefreshCw, Settings2, Trash2, UserCheck, UserX, Users } from 'lucide-react'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import { useAuthStore } from '@/stores/authStore'
-import type { SecretAccessLog, Team, User, UserRole } from '@/types'
+import type { HoneypotAccessLog, SecretAccessLog, Team, User, UserRole } from '@/types'
 
 const EDITABLE_ROLE_OPTIONS: Array<{ value: Exclude<UserRole, 'guest'>; label: string }> = [
   { value: 'dev', label: 'Developer' },
@@ -129,6 +129,68 @@ function SecretAccessLogSection({ logs }: { logs: SecretAccessLog[] }) {
                   </div>
                   <div className="min-w-0 text-sm text-[var(--color-text-muted)]">
                     <p className="truncate">{log.secret_owner_username ?? 'Unknown owner'}</p>
+                  </div>
+                  <div className="min-w-0 text-sm text-[var(--color-text-muted)]">
+                    <p className="truncate">{log.accessed_by_username ?? 'Unknown user'}</p>
+                  </div>
+                  <div className="text-sm text-[var(--color-text-muted)]">{formatDateTime(log.timestamp)}</div>
+                  <div className="min-w-0 text-sm text-[var(--color-text-muted)]">
+                    <p className="truncate font-mono text-xs text-[var(--color-text-dim)]">{log.ip_address ?? 'Unknown IP'}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+    </section>
+  )
+}
+
+function HoneypotAccessLogSection({ logs }: { logs: HoneypotAccessLog[] }) {
+  return (
+    <section className="glass rounded-3xl border border-[var(--color-border)]/80 bg-[var(--color-panel)]/70 p-6 shadow-[0_18px_64px_rgba(2,8,23,0.45)]">
+      <div className="flex items-start justify-between gap-4 border-b border-[var(--color-border)]/80 pb-4">
+        <div className="flex items-center gap-3">
+          <span className="rounded-2xl border border-[var(--color-honeypot)]/40 bg-[var(--color-honeypot)]/10 p-3 text-[var(--color-honeypot)]">
+            <EyeOff size={18} />
+          </span>
+          <div>
+            <h2 className="text-lg font-semibold tracking-tight text-[var(--color-text)]">Honeypot access logs</h2>
+            <p className="text-sm text-[var(--color-text-muted)]">
+              Hidden endpoint hits captured for intrusion detection and investigation.
+            </p>
+          </div>
+        </div>
+        <StatusBadge variant="honeypot" label={`${logs.length} triggers`} />
+      </div>
+
+      {logs.length === 0 ? (
+        <div className="mt-6 rounded-2xl border border-dashed border-[var(--color-border)] bg-[var(--color-surface)]/70 px-4 py-10 text-center text-sm text-[var(--color-text-dim)]">
+          No honeypot activity has been recorded yet.
+        </div>
+      ) : (
+        <div className="mt-6 overflow-x-auto rounded-2xl border border-[var(--color-border)]/80 bg-[var(--color-surface)]/70">
+          <div className="min-w-[1040px]">
+            <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,0.8fr)_minmax(0,0.8fr)_minmax(0,1fr)_minmax(0,0.9fr)] gap-4 border-b border-[var(--color-border)]/80 px-5 py-3 text-[11px] uppercase tracking-[0.18em] text-[var(--color-text-dim)]">
+              <span>Secret</span>
+              <span>Accessed by</span>
+              <span>Timestamp</span>
+              <span>Origin</span>
+            </div>
+            <div>
+              {logs.map((log) => (
+                <div
+                  key={log.id}
+                  className="grid grid-cols-[minmax(0,1fr)_minmax(0,0.8fr)_minmax(0,0.8fr)_minmax(0,1fr)_minmax(0,0.9fr)] gap-4 border-b border-[var(--color-border)]/60 px-5 py-4 last:border-b-0"
+                >
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <p className="truncate text-sm font-medium text-[var(--color-text)]">
+                        {log.secret_label ?? 'Secret removed'}
+                      </p>
+                      <StatusBadge variant='honeypot' />
+                    </div>
                   </div>
                   <div className="min-w-0 text-sm text-[var(--color-text-muted)]">
                     <p className="truncate">{log.accessed_by_username ?? 'Unknown user'}</p>
@@ -654,6 +716,7 @@ export function ControlPanelPage() {
   const [activeUsers, setActiveUsers] = useState<User[]>([])
   const [deactivatedUsers, setDeactivatedUsers] = useState<User[]>([])
   const [secretAccessLogs, setSecretAccessLogs] = useState<SecretAccessLog[]>([])
+  const [honeypotAccessLogs, setHoneypotAccessLogs] = useState<HoneypotAccessLog[]>([])
   const [settingsValues, setSettingsValues] = useState<Record<string, string>>(() => normalizeSettings())
   const [teams, setTeams] = useState<Team[]>([])
   const [teamName, setTeamName] = useState('')
@@ -682,11 +745,12 @@ export function ControlPanelPage() {
         throw new Error('Missing authenticated admin context.')
       }
 
-      const [activeResponse, deactivatedResponse, teamsResponse, logsResponse, settingsResponse] = await Promise.all([
+      const [activeResponse, deactivatedResponse, teamsResponse, logsResponse, honeypotLogsResponse, settingsResponse] = await Promise.all([
         api.get<User[]>('/users/', { params: { active: '1' } }),
         api.get<User[]>('/users/', { params: { active: '0' } }),
         api.get<Team[]>('/users/teams/'),
         api.get<SecretAccessLog[]>('/secrets/access-logs/', { params: { user: user.id } }),
+        api.get<HoneypotAccessLog[]>('/secrets/access-logs/honeypots/', { params: { user: user.id } }),
         api.get<Record<string, string>>('/settings/', { params: { user: user.id } }),
       ])
 
@@ -694,6 +758,7 @@ export function ControlPanelPage() {
       setDeactivatedUsers(Array.isArray(deactivatedResponse.data) ? deactivatedResponse.data : [])
       setTeams(Array.isArray(teamsResponse.data) ? teamsResponse.data : [])
       setSecretAccessLogs(Array.isArray(logsResponse.data) ? logsResponse.data : [])
+      setHoneypotAccessLogs(Array.isArray(honeypotLogsResponse.data) ? honeypotLogsResponse.data : [])
       setSettingsValues(normalizeSettings(settingsResponse.data))
     } catch {
       setError('Unable to load user control data right now.')
@@ -1002,6 +1067,7 @@ export function ControlPanelPage() {
               }}
             />
             <SecretAccessLogSection logs={secretAccessLogs} />
+            <HoneypotAccessLogSection logs={honeypotAccessLogs} />
           </div>
         )}
       </div>

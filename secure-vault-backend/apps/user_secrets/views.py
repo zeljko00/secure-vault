@@ -112,7 +112,6 @@ class SecretView(APIView):
 
     def get(self, request, id):
         # Check if honeypot endpoint is enabled
-        print("Checking if honeypot endpoint is enabled...")
         enabled = Setting.objects.filter(key="hidden_endpoint_enabled").first()
         if not enabled or enabled.value != "true":
             return Response(status=status.HTTP_404_NOT_FOUND)
@@ -291,4 +290,22 @@ class MyReceivedSharedSecretsView(APIView):
             .order_by("secret__owner__username", "secret__label")
         )
         serializer = ReceivedSharedSecretSerializer(shared_queryset, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+    
+class HoneypotAccessLogsView(APIView):
+    def get(self, request):
+        request_user = get_request_user(request)
+        if request_user is None:
+            return Response(
+                {"detail": "user query parameter is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if request_user.role != "admin":
+            return Response(status=status.HTTP_403_FORBIDDEN)
+
+        access_logs = (
+            HoneypotSecretAccessLog.objects.order_by("-timestamp")
+        )
+        serializer = SecretAccessLogSerializer(access_logs, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)

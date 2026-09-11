@@ -1,6 +1,7 @@
 from django.urls import path
 
 from apps.user_secrets.views import (
+    HoneypotAccessLogsView,
     MySecretsView,
     MyOwnedSharedSecretsView,
     MyReceivedSharedSecretsView,
@@ -21,5 +22,6 @@ urlpatterns = [
     path("<uuid:id>/delete/", SecretDeleteView.as_view(), name="delete-secret"),
     path("<uuid:id>/share", ShareSecretView.as_view(), name="share-secret"),
     path("shared/<uuid:id>", SharedSecretView.as_view(), name="revoke-shared-secret"),
-    path("access-logs/", SecretAccessLogsView.as_view(), name="secret-access-logs")
+    path("access-logs/", SecretAccessLogsView.as_view(), name="secret-access-logs"),
+    path("access-logs/honeypots/", HoneypotAccessLogsView.as_view(), name="honeypot-secret-access-logs")
 ]

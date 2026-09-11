@@ -84,3 +84,16 @@ export interface SecretAccessLog {
   ip_address?: string | null
   details?: string | null
 }
+
+export interface HoneypotAccessLog {
+  id: string
+  secret_id?: string | null
+  secret_label?: string | null
+  secret_type?: SecretType | null
+  secret_owner_username?: string | null
+  accessed_by_id?: string | null
+  accessed_by_username?: string | null
+  timestamp: string
+  ip_address?: string | null
+  details?: string | null
+}

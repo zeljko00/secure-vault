@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from apps.user_secrets.models import Secret, SharedSecret, SecretAccessLog
+from apps.user_secrets.models import Secret, SharedSecret, SecretAccessLog, HoneypotSecretAccessLog
 from django.utils import timezone
 
 class SecretValueField(serializers.Field):
@@ -89,6 +89,39 @@ class SecretAccessLogSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = SecretAccessLog
+        fields = [
+            "id",
+            "secret_id",
+            "secret_label",
+            "accessed_by_id",
+            "accessed_by_username",
+            "timestamp",
+            "ip_address",
+            "details",
+        ]
+
+
+class HoneypotSecretAccessLogSerializer(serializers.ModelSerializer):
+    secret_id = serializers.SerializerMethodField()
+    secret_label = serializers.SerializerMethodField()
+    accessed_by_id = serializers.SerializerMethodField()
+    accessed_by_username = serializers.SerializerMethodField()
+    
+
+    def get_secret_id(self, obj):
+        return obj.secret.id if obj.secret else None
+
+    def get_secret_label(self, obj):
+        return obj.secret.label if obj.secret else None
+
+    def get_accessed_by_id(self, obj):
+        return obj.user.id if obj.user else None
+
+    def get_accessed_by_username(self, obj):
+        return obj.user.username if obj.user else None
+
+    class Meta:
+        model = HoneypotSecretAccessLog
         fields = [
             "id",
             "secret_id",
