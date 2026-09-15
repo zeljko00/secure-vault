@@ -19,7 +19,7 @@ type FormValues = z.infer<typeof schema>
 
 export function LoginPage() {
   const navigate = useNavigate()
-  const { setUser, setMfaPending } = useAuthStore()
+  const { setUser, setAccessToken, setMfaPending } = useAuthStore()
   const [apiError, setApiError] = useState<string | null>(null)
 
   const {
@@ -31,11 +31,12 @@ export function LoginPage() {
   const onSubmit = async (data: FormValues) => {
     setApiError(null)
     try {
-      const res = await api.post<User>('/users/login/', data)
-      log('Login successful, user:', res.data)
-      setUser(res.data)
+      const res = await api.post<{ user: User; access_token: string }>('/users/login/', data)
+      log('Login successful, user:', res.data.user)
+      setUser(res.data.user)
+      setAccessToken(res.data.access_token)
       setMfaPending(false)
-      navigate(res.data.role === 'admin' ? '/admin' : '/', { replace: true })
+      navigate(res.data.user.role === 'admin' ? '/admin' : '/', { replace: true })
     } catch (err: unknown) {
       if (axios.isAxiosError(err) && err.response) {
         setApiError(err.response.data?.detail ?? err.response.data?.details ?? 'Invalid username or password')

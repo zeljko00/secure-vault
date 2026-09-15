@@ -2,9 +2,11 @@ import { create } from 'zustand'
 import type { User } from '@/types'
 
 const STORAGE_KEY = '_sv_auth_user'
+const TOKEN_KEY = '_sv_access_token'
 
 interface AuthState {
   user: User | null
+  accessToken: string | null
   /** In-memory AES-GCM key derived from master password — never persisted */
   masterKey: CryptoKey | null
   /** In-memory RSA private key — never persisted */
@@ -12,6 +14,7 @@ interface AuthState {
   mfaPending: boolean
 
   setUser: (user: User | null) => void
+  setAccessToken: (token: string | null) => void
   setMasterKey: (key: CryptoKey | null) => void
   setPrivateKey: (key: CryptoKey | null) => void
   setMfaPending: (pending: boolean) => void
@@ -28,8 +31,18 @@ function loadPersistedUser(): User | null {
   }
 }
 
+// Restore access token from localStorage on mount
+function loadPersistedToken(): string | null {
+  try {
+    return localStorage.getItem(TOKEN_KEY)
+  } catch {
+    return null
+  }
+}
+
 export const useAuthStore = create<AuthState>((set) => ({
   user: loadPersistedUser(),
+  accessToken: loadPersistedToken(),
   masterKey: null,
   privateKey: null,
   mfaPending: false,
@@ -42,12 +55,21 @@ export const useAuthStore = create<AuthState>((set) => ({
     }
     set({ user })
   },
+  setAccessToken: (token) => {
+    if (token) {
+      localStorage.setItem(TOKEN_KEY, token)
+    } else {
+      localStorage.removeItem(TOKEN_KEY)
+    }
+    set({ accessToken: token })
+  },
   setMasterKey:  (masterKey)  => set({ masterKey }),
   setPrivateKey: (privateKey) => set({ privateKey }),
   setMfaPending: (mfaPending) => set({ mfaPending }),
 
   logout: () => {
     localStorage.removeItem(STORAGE_KEY)
+    localStorage.removeItem(TOKEN_KEY)
     set({ user: null, masterKey: null, privateKey: null, mfaPending: false })
   },
 }))
