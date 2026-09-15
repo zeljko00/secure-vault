@@ -31,6 +31,11 @@ class User(models.Model):
 
     teams = models.ManyToManyField(Team, related_name="users", blank=True)
 
+    @property
+    def is_authenticated(self) -> bool:
+        """DRF compatibility — User objects are always authenticated when present."""
+        return True
+
     def __str__(self):
         return self.username
 

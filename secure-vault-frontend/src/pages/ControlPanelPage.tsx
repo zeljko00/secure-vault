@@ -129,7 +129,7 @@ function SecretAccessLogSection({ logs }: { logs: SecretAccessLog[] }) {
                     </div>
                   </div>
                   <div className="min-w-0 text-sm text-[var(--color-text-muted)]">
-                    <p className="truncate">{log.secret_owner_username ?? 'Unknown owner'}</p>
+                    <p className="truncate">{log.owner_username ?? 'Unknown owner'}</p>
                   </div>
                   <div className="min-w-0 text-sm text-[var(--color-text-muted)]">
                     <p className="truncate">{log.accessed_by_username ?? 'Unknown user'}</p>
@@ -760,6 +760,7 @@ export function ControlPanelPage() {
       setActiveUsers(Array.isArray(activeResponse.data) ? activeResponse.data : [])
       setDeactivatedUsers(Array.isArray(deactivatedResponse.data) ? deactivatedResponse.data : [])
       setTeams(Array.isArray(teamsResponse.data) ? teamsResponse.data : [])
+      console.log('Secret Access Logs:', logsResponse.data)
       setSecretAccessLogs(Array.isArray(logsResponse.data) ? logsResponse.data : [])
       setHoneypotAccessLogs(Array.isArray(honeypotLogsResponse.data) ? honeypotLogsResponse.data : [])
       setSettingsValues(normalizeSettings(settingsResponse.data))

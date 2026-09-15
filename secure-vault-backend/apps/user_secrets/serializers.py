@@ -84,8 +84,11 @@ class ReceivedSharedSecretSerializer(serializers.ModelSerializer):
 class SecretAccessLogSerializer(serializers.ModelSerializer):
     secret_id = serializers.UUIDField(source="secret.id", read_only=True)
     secret_label = serializers.CharField(source="secret.label", read_only=True)
+    secret_type = serializers.CharField(source="secret.type", read_only=True)
     accessed_by_id = serializers.UUIDField(source="user.id", read_only=True)
     accessed_by_username = serializers.CharField(source="user.username", read_only=True)
+    owner_id = serializers.UUIDField(source="secret.owner.id", read_only=True)
+    owner_username = serializers.CharField(source="secret.owner.username", read_only=True)
     
     class Meta:
         model = SecretAccessLog
@@ -93,11 +96,14 @@ class SecretAccessLogSerializer(serializers.ModelSerializer):
             "id",
             "secret_id",
             "secret_label",
+            "secret_type",
             "accessed_by_id",
             "accessed_by_username",
             "timestamp",
             "ip_address",
             "details",
+            "owner_id",
+            "owner_username",
         ]
 
 

@@ -1,8 +1,8 @@
 import { create } from 'zustand'
 import type { User } from '@/types'
 
-const STORAGE_KEY = '_sv_auth_user'
-const TOKEN_KEY = '_sv_access_token'
+export const AUTH_USER_STORAGE_KEY = '_sv_auth_user'
+export const AUTH_TOKEN_STORAGE_KEY = '_sv_access_token'
 
 interface AuthState {
   user: User | null
@@ -24,7 +24,7 @@ interface AuthState {
 // Restore user from localStorage on mount
 function loadPersistedUser(): User | null {
   try {
-    const stored = localStorage.getItem(STORAGE_KEY)
+    const stored = localStorage.getItem(AUTH_USER_STORAGE_KEY)
     return stored ? JSON.parse(stored) : null
   } catch {
     return null
@@ -34,7 +34,7 @@ function loadPersistedUser(): User | null {
 // Restore access token from localStorage on mount
 function loadPersistedToken(): string | null {
   try {
-    return localStorage.getItem(TOKEN_KEY)
+    return localStorage.getItem(AUTH_TOKEN_STORAGE_KEY)
   } catch {
     return null
   }
@@ -49,17 +49,17 @@ export const useAuthStore = create<AuthState>((set) => ({
 
   setUser: (user) => {
     if (user) {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(user))
+      localStorage.setItem(AUTH_USER_STORAGE_KEY, JSON.stringify(user))
     } else {
-      localStorage.removeItem(STORAGE_KEY)
+      localStorage.removeItem(AUTH_USER_STORAGE_KEY)
     }
     set({ user })
   },
   setAccessToken: (token) => {
     if (token) {
-      localStorage.setItem(TOKEN_KEY, token)
+      localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, token)
     } else {
-      localStorage.removeItem(TOKEN_KEY)
+      localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY)
     }
     set({ accessToken: token })
   },
@@ -68,8 +68,8 @@ export const useAuthStore = create<AuthState>((set) => ({
   setMfaPending: (mfaPending) => set({ mfaPending }),
 
   logout: () => {
-    localStorage.removeItem(STORAGE_KEY)
-    localStorage.removeItem(TOKEN_KEY)
-    set({ user: null, masterKey: null, privateKey: null, mfaPending: false })
+    localStorage.removeItem(AUTH_USER_STORAGE_KEY)
+    localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY)
+    set({ user: null, accessToken: null, masterKey: null, privateKey: null, mfaPending: false })
   },
 }))

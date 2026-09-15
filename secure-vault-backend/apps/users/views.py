@@ -3,12 +3,15 @@ from rest_framework.generics import get_object_or_404
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from rest_framework.permissions import IsAuthenticated
 
 from django.core.exceptions import ValidationError
 
 from apps.users.models import Team, User, UserDeactivationLog, UserRole
 from apps.users.serializers import UserSerializer, TeamSerializer, DeactivationLogSerializer
 from util.cryptography import sha256
+from util.authentication import create_access_token
+from util.authorization import IsAdmin
 
 def user_info(user):
     return {
@@ -28,16 +31,24 @@ def roles():
 class UsersView(APIView):
     permission_classes = [AllowAny]
 
+    def get_permissions(self):
+        if self.request.method == "POST":
+            return [AllowAny()]
+
+        return [IsAuthenticated(), IsAdmin()]
+
     def post(self, request):
         serializer = UserSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
-
         return Response(
-            user_info(user),
+            {
+                "user": user_info(user),
+                "access_token": create_access_token(user),
+            },
             status=status.HTTP_201_CREATED,
         )
-        
+
     def get(self, request):
         role = request.query_params.get("role")
         team = request.query_params.get("team")
@@ -69,6 +80,7 @@ class UsersView(APIView):
             [user_info(user) for user in users],
             status=status.HTTP_200_OK,
         )
+        
 class UserLoginView(APIView):
     permission_classes = [AllowAny]
 
@@ -81,14 +93,18 @@ class UserLoginView(APIView):
             )
         else:
             return Response(
-                user_info(user),
+                {
+                    "user": user_info(user),
+                    "access_token": create_access_token(user),
+                },
                 status=status.HTTP_200_OK,
             )
-class UserView(APIView):
-    permission_classes = [AllowAny]
 
-    def get(self, request, id):
-        user = get_object_or_404(User, id=id)
+class UserView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        user = get_object_or_404(User, id=request.user.id)
         return Response(
             user_info(user),
             status=status.HTTP_200_OK,
@@ -96,7 +112,7 @@ class UserView(APIView):
 
 
 class UserRoleView(APIView):
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticated, IsAdmin]
 
     def put(self, request, id):
         user = get_object_or_404(User, id=id)
@@ -119,7 +135,8 @@ class UserRoleView(APIView):
 
 
 class TeamsView(APIView):
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticated, IsAdmin]
+
 
     def get(self, request):
         teams = Team.objects.all().order_by("name")
@@ -152,7 +169,7 @@ class TeamsView(APIView):
 
 
 class TeamView(APIView):
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticated, IsAdmin]
 
     def delete(self, request, id):
         team = get_object_or_404(Team, id=id)
@@ -160,7 +177,7 @@ class TeamView(APIView):
         return Response(status=status.HTTP_204_NO_CONTENT)
     
 class UserTeamView(APIView):
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticated, IsAdmin]
 
     def put(self, request, id):
         user = get_object_or_404(User, id=id)
@@ -190,7 +207,7 @@ class UserTeamView(APIView):
 
 
 class UserDeactivationView(APIView):
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticated, IsAdmin]
 
     def put(self, request, id):
         user = get_object_or_404(User, id=id)
@@ -207,10 +224,10 @@ class UserDeactivationView(APIView):
         return Response(status=status.HTTP_204_NO_CONTENT)
     
 class UserPasswordView(APIView):
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticated]
 
     def put(self, request):
-        id = request.data.get("id") # TODO: take ID from auth
+        id = request.user.id
         password_old = request.data.get("old_password")
         password_new = request.data.get("new_password")
         if not id or not password_old or not password_new:
@@ -231,10 +248,10 @@ class UserPasswordView(APIView):
                 return Response(status=status.HTTP_204_NO_CONTENT)
 
 class UserPublicKeyView(APIView):
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticated]
 
     def put(self, request):
-        id = request.data.get("id") # TODO: take ID from session
+        id = request.user.id
         pub_key = request.data.get("pub_key")
         if not id or not pub_key:
             return Response(
@@ -247,17 +264,4 @@ class UserPublicKeyView(APIView):
         user.save(update_fields=["pub_key"])
         return Response(status=status.HTTP_204_NO_CONTENT)
 
-
-class UserStatsView(APIView):
-    permission_classes = [AllowAny]
-
-    def get(self, request, id):
-        user = get_object_or_404(User, id=id)
-        return Response(
-            {
-             **user_info(user),
-             "stats": "TODO",
-            },
-            status=status.HTTP_200_OK,
-        )
 

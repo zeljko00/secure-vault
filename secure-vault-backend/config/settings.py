@@ -85,3 +85,13 @@ EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD', '')
 EMAIL_USE_TLS = os.getenv('EMAIL_USE_TLS', 'false').lower() == 'true'
 EMAIL_USE_SSL = os.getenv('EMAIL_USE_SSL', 'false').lower() == 'true'
 EMAIL_TIMEOUT = int(os.getenv('EMAIL_TIMEOUT', '10'))
+
+# Wire up Django's built in authentication interceptor to custom authenticator
+REST_FRAMEWORK = {
+    "DEFAULT_AUTHENTICATION_CLASSES": (
+        "util.authentication.CustomJWTAuthentication",
+    ),
+}
+
+# Used to sign JWTs
+JWT_SECRET_KEY = os.environ["JWT_SECRET_KEY"]

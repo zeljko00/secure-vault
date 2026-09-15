@@ -77,7 +77,8 @@ export interface SecretAccessLog {
   secret_id?: string | null
   secret_label?: string | null
   secret_type?: SecretType | null
-  secret_owner_username?: string | null
+  owner_id?: string | null
+  owner_username?: string | null
   accessed_by_id?: string | null
   accessed_by_username?: string | null
   timestamp: string
