@@ -180,7 +180,6 @@ export function HomePage() {
         const res = await api.get<Secret[]>('/secrets/me/', {
           params: { user: user.id },
         })
-        log("Fetched user's secrets:", res.data)
         setSecrets(Array.isArray(res.data) ? res.data : [])
       } catch (err: unknown) {
         if (axios.isAxiosError(err) && err.response?.status === 404) {
@@ -604,7 +603,6 @@ export function HomePage() {
 
       const successCount = results.filter((result) => result.status === 'fulfilled').length
 
-      log('Share results:', results)
       const failedCount = results.length - successCount
 
       if (successCount === 0) {

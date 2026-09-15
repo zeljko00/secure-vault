@@ -32,7 +32,7 @@ export function LoginPage() {
     setApiError(null)
     try {
       const res = await api.post<{ user: User; access_token: string }>('/users/login/', data)
-      log('Login successful, user:', res.data.user)
+      log('Login successful:', res.data)
       setUser(res.data.user)
       setAccessToken(res.data.access_token)
       setMfaPending(false)

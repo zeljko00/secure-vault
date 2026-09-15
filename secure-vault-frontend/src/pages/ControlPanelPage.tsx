@@ -760,7 +760,6 @@ export function ControlPanelPage() {
       setActiveUsers(Array.isArray(activeResponse.data) ? activeResponse.data : [])
       setDeactivatedUsers(Array.isArray(deactivatedResponse.data) ? deactivatedResponse.data : [])
       setTeams(Array.isArray(teamsResponse.data) ? teamsResponse.data : [])
-      console.log('Secret Access Logs:', logsResponse.data)
       setSecretAccessLogs(Array.isArray(logsResponse.data) ? logsResponse.data : [])
       setHoneypotAccessLogs(Array.isArray(honeypotLogsResponse.data) ? honeypotLogsResponse.data : [])
       setSettingsValues(normalizeSettings(settingsResponse.data))

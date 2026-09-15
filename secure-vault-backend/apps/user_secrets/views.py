@@ -59,8 +59,6 @@ def is_honeypot(secret, user: User, request) -> bool:
                 f"Time: {access_time}\n"
                 f"Endpoint: {request.path}\n"
             )
-            
-            print(f"Sending honeypot access email to: {', '.join(admin_emails)}")
 
             send_mail(
                 subject=subject,
@@ -135,7 +133,6 @@ class SecretDeleteView(APIView):
 
     def delete(self, request, id):
         secret = get_object_or_404(Secret, id=id)
-        print(secret)
         if str(secret.owner.id) != str(request.user.id):  # TODO: take user from session
             return Response(status=status.HTTP_403_FORBIDDEN)
         secret.delete()
@@ -184,7 +181,6 @@ class ShareSecretView(APIView):
 
             return Response(serializer.data, status=status.HTTP_201_CREATED)
         except (RedisError, ValueError):
-            print()
             shared.delete()
             return Response(
                 {"detail": "Failed to store shared secret."},
