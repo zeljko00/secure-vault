@@ -2,7 +2,7 @@ from rest_framework import serializers
 
 from apps.users.models import RefreshToken, Team, User, UserDeactivationLog, UserRole
 
-from util.cryptography import sha256
+from util.cryptography import sha256, CustomArgon2PasswordHasher
 
 class TeamSerializer(serializers.ModelSerializer):
     class Meta:
@@ -31,21 +31,23 @@ class UserSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         password = validated_data.pop("password")
+        custom_argon2_hasher = CustomArgon2PasswordHasher()
 
         return User.objects.create(
             **validated_data,
             role=UserRole.DEVELOPER,
-            password_hash=sha256(password.encode()),
+            password_hash=custom_argon2_hasher.encode(password, salt=custom_argon2_hasher.salt()),
         )
 
     def update(self, instance, validated_data):
         password = validated_data.pop("password", None)
+        custom_argon2_hasher = CustomArgon2PasswordHasher()
 
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
 
         if password:
-            instance.password_hash = sha256(password.encode())
+            instance.password_hash = custom_argon2_hasher.encode(password, salt=custom_argon2_hasher.salt())
 
         instance.save()
         return instance

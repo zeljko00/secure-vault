@@ -4,3 +4,4 @@ psycopg[binary]>=3,<4
 bcrypt>=4,<5
 redis>=6,<7
 PyJWT>=2,<3
+argon2-cffi>=21,<22

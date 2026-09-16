@@ -9,7 +9,7 @@ from django.core.exceptions import ValidationError
 
 from apps.users.models import Team, User, UserDeactivationLog, UserRole, RefreshToken
 from apps.users.serializers import UserSerializer, TeamSerializer, DeactivationLogSerializer, RefreshTokenSerializer
-from util.cryptography import sha256
+from util.cryptography import sha256, CustomArgon2PasswordHasher
 from util.authentication import create_access_token, create_refresh_token
 from util.authorization import IsAdmin, IsTeamLead
 from django.utils import timezone
@@ -94,12 +94,20 @@ class UserLoginView(APIView):
 
     def post(self, request):
         user = User.objects.filter(username=request.data.get("username")).first()
-        if not user or user.password_hash != sha256(request.data.get("password").encode()) or UserDeactivationLog.objects.filter(user=user).exists(): 
+        if not user or UserDeactivationLog.objects.filter(user=user).exists(): 
             return Response(
                 {"details": "Invalid username or password."},
                 status=status.HTTP_401_UNAUTHORIZED,
             )
         else:
+            custom_argon2_hasher = CustomArgon2PasswordHasher()
+            try:
+                custom_argon2_hasher.verify(request.data.get("password"), user.password_hash)
+            except Exception:
+                return Response(
+                    {"details": "Invalid username or password."},
+                    status=status.HTTP_401_UNAUTHORIZED,
+                )
             refresh_token_payload = create_refresh_token()
             existing_token = RefreshToken.objects.filter(user=user).first()
 
@@ -293,7 +301,7 @@ class UserDeactivationView(APIView):
     def put(self, request, id):
         user = get_object_or_404(User, id=id)
 
-        if not UserDeactivationLog.objects.filter(user=user).exists():
+        if UserDeactivationLog.objects.filter(user=user).exists():
             return Response(
                 {"detail": "User is already deactivated."},
                 status=status.HTTP_409_CONFLICT,
@@ -319,15 +327,19 @@ class UserPasswordView(APIView):
             )
         else:
             user = get_object_or_404(User, id=id)
-            if user.password_hash != sha256(password_old.encode()):
+            custom_argon2_hasher = CustomArgon2PasswordHasher()
+            
+            try:
+                custom_argon2_hasher.verify(password_old, user.password_hash,)
+            except Exception:
                 return Response(
                     {"details": "Old password is incorrect."},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
-            else:
-                user.password_hash = sha256(password_new.encode())
-                user.save(update_fields=["password_hash"])
-                return Response(status=status.HTTP_204_NO_CONTENT)
+
+            user.password_hash = custom_argon2_hasher.encode(password_new, salt=custom_argon2_hasher.salt())
+            user.save(update_fields=["password_hash"])
+            return Response(status=status.HTTP_204_NO_CONTENT)
 
 class UserPublicKeyView(APIView):
     permission_classes = [IsAuthenticated]

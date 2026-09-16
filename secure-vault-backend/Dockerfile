@@ -5,9 +5,9 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-# install db client for debugging
+# install db client and build dependencies for argon2-cffi
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends postgresql-client \
+    && apt-get install -y --no-install-recommends postgresql-client build-essential \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt /app/requirements.txt
