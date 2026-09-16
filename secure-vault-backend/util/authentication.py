@@ -14,7 +14,16 @@ DEFAULT_REFRESH_TOKEN_DURATION_MINUTES = 60 * 24 * 7  # 7 days
 
 
 def get_access_token_duration_minutes() -> int:
-    return DEFAULT_ACCESS_TOKEN_DURATION_MINUTES
+    setting = Setting.objects.filter(key="jwt_ttl_minutes").first()
+    if not setting:
+        return DEFAULT_ACCESS_TOKEN_DURATION_MINUTES
+
+    try:
+        duration_minutes = int(setting.value)
+    except (TypeError, ValueError):
+        return DEFAULT_ACCESS_TOKEN_DURATION_MINUTES
+
+    return duration_minutes if duration_minutes > 0 else DEFAULT_ACCESS_TOKEN_DURATION_MINUTES
 
 def get_refresh_token_duration_minutes() -> int:
     setting = Setting.objects.filter(key="session_ttl_minutes").first()
