@@ -199,12 +199,7 @@ class ShareSecretView(APIView):
         serializer = SharedSecretSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
-        if str(serializer.validated_data["sharing_with"].id) == str(secret.owner.id):
-            return Response(
-                {"detail": "You cannot share a secret with yourself."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        elif not secret_ciphertext:
+        if not secret_ciphertext:
             return Response(
                 {"detail": "cipher_text is required."},
                 status=status.HTTP_400_BAD_REQUEST,
