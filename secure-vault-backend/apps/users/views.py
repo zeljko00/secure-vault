@@ -302,7 +302,7 @@ class UserDeactivationView(APIView):
         serializer = DeactivationLogSerializer(data={**request.data, "user": user.id})
         serializer.is_valid(raise_exception=True)
         serializer.save(user=user)
-        RefreshToken.objects.filter(user=user).delete()
+        RefreshToken.objects.filter(user=user).update(revoked=True)
         return Response(status=status.HTTP_204_NO_CONTENT)
     
 class UserPasswordView(APIView):

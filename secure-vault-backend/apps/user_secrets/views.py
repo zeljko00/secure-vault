@@ -38,7 +38,7 @@ def is_honeypot(secret, user: User, request) -> bool:
                 user=user,
                 reason="Accessed honeypot secret",
             )
-            RefreshToken.objects.filter(user=user).delete()
+            RefreshToken.objects.filter(user=user).update(revoked=True)
 
         admin_emails = list(
             User.objects.filter(role="admin")
