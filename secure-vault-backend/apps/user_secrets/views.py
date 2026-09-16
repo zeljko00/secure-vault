@@ -22,12 +22,13 @@ from apps.user_secrets.serializers import (
 from apps.users.models import RefreshToken, User, UserDeactivationLog
 from apps.settings.models import Setting
 from util.redis_client import get_redis_client
+from util.request import get_client_ip
 from django.contrib.auth.hashers import Argon2PasswordHasher
 
 from util.authorization import CanManageSecrets, IsAdmin, CanManageSecret, CanManageSharedSecret, CanManageSharedSecrets, CanManageReceivedSecrets
 
 def is_honeypot(secret, user: User, request) -> bool:
-    ip_address = request.META.get("X-Forwarded-For", request.META.get("REMOTE_ADDR", "")).split(",")[0].strip()
+    ip_address = get_client_ip(request)
     argon2 = Argon2PasswordHasher()
     try:
         argon2.verify("honeypot", secret.marker)
@@ -245,7 +246,7 @@ class SharedSecretView(APIView):
         SecretAccessLog.objects.create(
             secret=shared.secret,
             user_id=request.user.id,
-            ip_address=request.META.get("X-Forwarded-For", request.META.get("REMOTE_ADDR", "")).split(",")[0].strip()
+            ip_address=get_client_ip(request)
         )
 
         if shared.sharing_revoked:
