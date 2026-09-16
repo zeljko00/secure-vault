@@ -2,6 +2,7 @@ from rest_framework import serializers
 
 from apps.user_secrets.models import Secret, SharedSecret, SecretAccessLog, HoneypotSecretAccessLog
 from django.utils import timezone
+from django.contrib.auth.hashers import Argon2PasswordHasher
 
 class SecretValueField(serializers.Field):
     def to_representation(self, value):
@@ -26,6 +27,15 @@ class SecretSerializer(serializers.ModelSerializer):
         model = Secret
         fields = ["id", "type", "label", "value", "marker","iv", "owner"]
         read_only_fields = ["id", "owner"]
+
+    def create(self, validated_data):
+        marker = validated_data.pop("marker", None)
+        
+        if not marker:
+            marker = "regular secret"
+
+        argon2 = Argon2PasswordHasher()
+        return Secret.objects.create(**validated_data, marker=argon2.encode(marker, argon2.salt()))
 
 
 class SharedSecretSerializer(serializers.ModelSerializer):

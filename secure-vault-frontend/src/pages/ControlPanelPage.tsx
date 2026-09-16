@@ -5,7 +5,7 @@ import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import { useAuthStore } from '@/stores/authStore'
-import type { HoneypotAccessLog, SecretAccessLog, Team, User, UserRole } from '@/types'
+import type { HoneypotAccessLog, Secret, SecretAccessLog, Team, User, UserRole } from '@/types'
 
 const EDITABLE_ROLE_OPTIONS: Array<{ value: Exclude<UserRole, 'guest'>; label: string }> = [
   { value: 'dev', label: 'Developer' },
@@ -222,11 +222,15 @@ function SettingsManagementSection({
   savingSettingKey,
   onSettingChange,
   onSaveSetting,
+  onGenerateHoneypotSecret,
+  isGeneratingHoneypotSecret,
 }: {
   settingsValues: Record<string, string>
   savingSettingKey: string | null
   onSettingChange: (key: string, value: string) => void
   onSaveSetting: (key: string, value?: string) => Promise<boolean>
+  onGenerateHoneypotSecret: () => Promise<boolean>
+  isGeneratingHoneypotSecret: boolean
 }) {
   const additionalSettingKeys = Object.keys(settingsValues)
     .filter((key) => !MANAGED_SETTINGS.some((setting) => setting.key === key))
@@ -264,45 +268,55 @@ function SettingsManagementSection({
 
               <div className="mt-4 space-y-3">
                 {isHiddenEndpointToggle ? (
-                  <button
-                    type="button"
-                    role="switch"
-                    aria-checked={isEnabled}
-                    onClick={async () => {
-                      const nextValue = isEnabled ? 'false' : 'true'
-                      onSettingChange(setting.key, nextValue)
-                      const didSave = await onSaveSetting(setting.key, nextValue)
-                      if (!didSave) {
-                        onSettingChange(setting.key, isEnabled ? 'true' : 'false')
-                      }
-                    }}
-                    disabled={savingSettingKey !== null}
-                    className={cn(
-                      'flex w-full items-center justify-between rounded-2xl border px-4 py-3 text-sm transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-60',
-                      isEnabled
-                        ? 'border-[var(--color-accent)]/40 bg-[var(--color-accent)]/10 text-[var(--color-accent)]'
-                        : 'border-[var(--color-border)] bg-[var(--color-panel)]/80 text-[var(--color-text-muted)]',
-                    )}
-                  >
-                    <span>{isEnabled ? 'Enabled' : 'Disabled'}</span>
-                    <span
+                  <div className="space-y-3">
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={isEnabled}
+                      onClick={async () => {
+                        const nextValue = isEnabled ? 'false' : 'true'
+                        onSettingChange(setting.key, nextValue)
+                        const didSave = await onSaveSetting(setting.key, nextValue)
+                        if (!didSave) {
+                          onSettingChange(setting.key, isEnabled ? 'true' : 'false')
+                        }
+                      }}
+                      disabled={savingSettingKey !== null}
                       className={cn(
-                        'relative inline-flex h-7 w-12 items-center rounded-full border transition-colors duration-200',
+                        'flex w-full items-center justify-between rounded-2xl border px-4 py-3 text-sm transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-60',
                         isEnabled
-                          ? 'border-[var(--color-accent)]/40 bg-[var(--color-accent)]/20'
-                          : 'border-[var(--color-border)] bg-[var(--color-panel)]',
+                          ? 'border-[var(--color-accent)]/40 bg-[var(--color-accent)]/10 text-[var(--color-accent)]'
+                          : 'border-[var(--color-border)] bg-[var(--color-panel)]/80 text-[var(--color-text-muted)]',
                       )}
                     >
+                      <span>{isEnabled ? 'Enabled' : 'Disabled'}</span>
                       <span
                         className={cn(
-                          'absolute h-5 w-5 rounded-full transition-transform duration-200',
+                          'relative inline-flex h-7 w-12 items-center rounded-full border transition-colors duration-200',
                           isEnabled
-                            ? 'translate-x-6 bg-[var(--color-accent)]'
-                            : 'translate-x-1 bg-[var(--color-text-dim)]',
+                            ? 'border-[var(--color-accent)]/40 bg-[var(--color-accent)]/20'
+                            : 'border-[var(--color-border)] bg-[var(--color-panel)]',
                         )}
-                      />
-                    </span>
-                  </button>
+                      >
+                        <span
+                          className={cn(
+                            'absolute h-5 w-5 rounded-full transition-transform duration-200',
+                            isEnabled
+                              ? 'translate-x-6 bg-[var(--color-accent)]'
+                              : 'translate-x-1 bg-[var(--color-text-dim)]',
+                          )}
+                        />
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={onGenerateHoneypotSecret}
+                      disabled={!isEnabled || savingSettingKey !== null || isGeneratingHoneypotSecret}
+                      className="inline-flex w-full items-center justify-center rounded-2xl border border-[var(--color-honeypot)]/40 bg-[var(--color-honeypot)]/10 px-4 py-2 text-sm font-medium text-[var(--color-honeypot)] transition-all duration-200 hover:bg-[var(--color-honeypot)]/16 hover:shadow-[0_0_18px_rgba(255,0,110,0.18)] disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {isGeneratingHoneypotSecret ? 'Generating…' : 'Generate honeypot secret'}
+                    </button>
+                  </div>
                 ) : (
                   <input
                     type="text"
@@ -748,6 +762,8 @@ export function ControlPanelPage() {
   const [deletingTeamId, setDeletingTeamId] = useState<string | null>(null)
   const [isCreatingTeam, setIsCreatingTeam] = useState(false)
   const [savingSettingKey, setSavingSettingKey] = useState<string | null>(null)
+  const [isGeneratingHoneypotSecret, setIsGeneratingHoneypotSecret] = useState(false)
+  const [generatedHoneypotSecret, setGeneratedHoneypotSecret] = useState<Secret | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   const fetchUsers = async (showLoader: boolean) => {
@@ -938,6 +954,28 @@ export function ControlPanelPage() {
     }
   }
 
+  const handleGenerateHoneypotSecret = async (): Promise<boolean> => {
+    if (!user?.id) {
+      setError('Missing authenticated admin context.')
+      return false
+    }
+
+    setIsGeneratingHoneypotSecret(true)
+    setError(null)
+
+    try {
+      const response = await api.post<Secret>('/secrets/public/', {})
+      setGeneratedHoneypotSecret(response.data)
+      await fetchUsers(false)
+      return true
+    } catch {
+      setError('Unable to generate the honeypot secret.')
+      return false
+    } finally {
+      setIsGeneratingHoneypotSecret(false)
+    }
+  }
+
   const handleLogout = () => {
     logout()
     navigate('/login')
@@ -1034,7 +1072,32 @@ export function ControlPanelPage() {
               savingSettingKey={savingSettingKey}
               onSettingChange={handleSettingChange}
               onSaveSetting={handleSaveSetting}
+              onGenerateHoneypotSecret={handleGenerateHoneypotSecret}
+              isGeneratingHoneypotSecret={isGeneratingHoneypotSecret}
             />
+            {generatedHoneypotSecret && (
+              <section className="glass rounded-3xl border border-[var(--color-honeypot)]/30 bg-[var(--color-panel)]/70 p-6 shadow-[0_18px_64px_rgba(2,8,23,0.45)]">
+                <div className="flex items-start justify-between gap-4 border-b border-[var(--color-honeypot)]/20 pb-4">
+                  <div>
+                    <h2 className="text-lg font-semibold tracking-tight text-[var(--color-text)]">Generated honeypot secret</h2>
+                    <p className="text-sm text-[var(--color-text-muted)]">
+                      This decoy secret is stored in the vault and can be used to test the hidden endpoint.
+                    </p>
+                  </div>
+                  <StatusBadge variant="honeypot" label={generatedHoneypotSecret.type} />
+                </div>
+                <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+                  <div className="rounded-2xl border border-[var(--color-border)]/80 bg-[var(--color-surface)]/70 p-4">
+                    <p className="text-[11px] uppercase tracking-[0.18em] text-[var(--color-text-dim)]">Label</p>
+                    <p className="mt-2 font-mono text-sm text-[var(--color-text)] break-all">{generatedHoneypotSecret.label}</p>
+                  </div>
+                  <div className="rounded-2xl border border-[var(--color-border)]/80 bg-[var(--color-surface)]/70 p-4">
+                    <p className="text-[11px] uppercase tracking-[0.18em] text-[var(--color-text-dim)]">Value</p>
+                    <p className="mt-2 font-mono text-sm text-[var(--color-accent)] break-all">{generatedHoneypotSecret.value}</p>
+                  </div>
+                </div>
+              </section>
+            )}
             <TeamManagementSection
               teams={teams}
               teamMemberCounts={teamMemberCounts}

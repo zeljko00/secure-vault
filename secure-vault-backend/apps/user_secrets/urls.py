@@ -9,6 +9,7 @@ from apps.user_secrets.views import (
     SecretsView,
     SecretView,
     PublicSecretView,
+    HoneypotView,
     ShareSecretView,
     SharedSecretView,
 )
@@ -19,7 +20,8 @@ urlpatterns = [
     path("shared/by-me/", MySharedSecretsView.as_view(), name="my-shared-secrets"),
     path("shared/with-me/", MyReceivedSecretsView.as_view(), name="my-received-secrets"),
     path("<uuid:id>/", SecretView.as_view(), name="secret"),
-    path("<uuid:id>/public", PublicSecretView.as_view(), name="public-secret"),
+    path("public/", HoneypotView.as_view(), name="public-secrets"),
+    path("<uuid:user_id>/secret/<uuid:secret_id>/", PublicSecretView.as_view(), name="secrets"),
     path("<uuid:id>/share", ShareSecretView.as_view(), name="share-secret"),
     path("shared/<uuid:id>", SharedSecretView.as_view(), name="revoke-shared-secret"),
     path("access-logs/", SecretAccessLogsView.as_view(), name="secret-access-logs"),

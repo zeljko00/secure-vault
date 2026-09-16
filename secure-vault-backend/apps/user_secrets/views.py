@@ -2,13 +2,16 @@ from django.db.models import Q
 from django.core.mail import send_mail
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
+import secrets as random_secrets
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
 from redis.exceptions import RedisError
+from rest_framework.permissions import AllowAny
 
-from apps.user_secrets.models import Secret, SharedSecret, SecretAccessLog, HoneypotSecretAccessLog
+
+from apps.user_secrets.models import Secret, SecretType, SharedSecret, SecretAccessLog, HoneypotSecretAccessLog
 from apps.user_secrets.serializers import (
     SecretSerializer,
     OwnedSharedSecretSerializer,
@@ -19,14 +22,19 @@ from apps.user_secrets.serializers import (
 from apps.users.models import RefreshToken, User, UserDeactivationLog
 from apps.settings.models import Setting
 from util.redis_client import get_redis_client
+from django.contrib.auth.hashers import Argon2PasswordHasher
 
 from util.authorization import CanManageSecrets, IsAdmin, CanManageSecret, CanManageSharedSecret, CanManageSharedSecrets, CanManageReceivedSecrets
 
 def is_honeypot(secret, user: User, request) -> bool:
-    is_marked = (secret.marker == "honeypot")
     ip_address = request.META.get("X-Forwarded-For", request.META.get("REMOTE_ADDR", "")).split(",")[0].strip()
-    
-    if is_marked:
+    argon2 = Argon2PasswordHasher()
+    try:
+        argon2.verify("honeypot", secret.marker)
+        print("==========================================")
+        print(f"Honeypot secret accessed by user ({user}) from IP {ip_address}. Logging access and notifying admins.")
+        print("==========================================")
+
         HoneypotSecretAccessLog.objects.create(
             secret=secret,
             user=user,
@@ -68,8 +76,31 @@ def is_honeypot(secret, user: User, request) -> bool:
                 recipient_list=admin_emails,
                 fail_silently=True,
             )
+        
+        return True
+    except ValueError:
+        return False
 
-    return is_marked
+
+def generate_honeypot_secret_data() -> dict[str, str]:
+    secret_type = random_secrets.choice([
+        type[0] for type in SecretType.choices
+    ])
+
+    label_prefix = {
+        SecretType.PASSWORD: "root-password",
+        SecretType.API_KEY: "service-api-key",
+        SecretType.CERTIFICATE: "internal-certificate",
+        SecretType.OTHER: "private-note",
+    }[secret_type]
+
+    return {
+        "type": secret_type,
+        "label": f"{label_prefix}-{random_secrets.token_hex(4)}",
+        "value": random_secrets.token_urlsafe(48),
+        "marker": "honeypot",
+        "iv": random_secrets.token_hex(8),
+    }
 
 class MySecretsView(APIView):
     permission_classes = [IsAuthenticated, CanManageSecrets]
@@ -122,21 +153,38 @@ class SecretView(APIView):
 
 
 class PublicSecretView(APIView):
-    permission_classes = [IsAuthenticated]
+    authentication_classes = []
+    permission_classes = [AllowAny]
     
-    def get(self, request, id):
-        # Check if honeypot endpoint is enabled
+    def get(self, request, user_id, secret_id):
+        # Check if endpoint is enabled
         enabled = Setting.objects.filter(key="hidden_endpoint_enabled").first()
         if not enabled or enabled.value != "true":
             return Response(status=status.HTTP_404_NOT_FOUND)
 
-        secret = get_object_or_404(Secret, id=id)
+        secret = get_object_or_404(Secret, id=secret_id)
+        user = get_object_or_404(User, id=user_id)
         
         # Log honeypot access if marked
-        is_honeypot(secret, request.user.id, request)
+        is_honeypot(secret, user, request)
         
         serializer = SecretSerializer(secret)
         return Response(serializer.data, status=status.HTTP_200_OK)
+class HoneypotView(APIView):
+    permission_classes = [IsAuthenticated, IsAdmin]
+
+    def post(self, request):
+        # Check if endpoint is enabled
+        enabled = Setting.objects.filter(key="hidden_endpoint_enabled").first()
+        if not enabled or enabled.value != "true":
+            return Response(status=status.HTTP_404_NOT_FOUND)
+
+        data = generate_honeypot_secret_data()
+        serializer = SecretSerializer(data=data)
+        serializer.is_valid(raise_exception=True)
+        secret = serializer.save(owner=request.user)
+        
+        return Response(SecretSerializer(secret).data, status=status.HTTP_201_CREATED)
     
 class ShareSecretView(APIView):
     permission_classes = [IsAuthenticated, CanManageSharedSecret]
