@@ -19,7 +19,7 @@ type FormValues = z.infer<typeof schema>
 
 export function LoginPage() {
   const navigate = useNavigate()
-  const { setUser, setAccessToken, setMfaPending } = useAuthStore()
+  const { setUser, setAccessToken, setRefreshToken, setMfaPending } = useAuthStore()
   const [apiError, setApiError] = useState<string | null>(null)
 
   const {
@@ -31,10 +31,12 @@ export function LoginPage() {
   const onSubmit = async (data: FormValues) => {
     setApiError(null)
     try {
-      const res = await api.post<{ user: User; access_token: string }>('/users/login/', data)
+      const res = await api.post<{ user: User; access_token: string; refresh_token: string }>('/users/login/', data)
       log('Login successful:', res.data)
       setUser(res.data.user)
       setAccessToken(res.data.access_token)
+      setRefreshToken(res.data.refresh_token)
+      console.log(res.data.refresh_token)
       setMfaPending(false)
       navigate(res.data.user.role === 'admin' ? '/admin' : '/', { replace: true })
     } catch (err: unknown) {

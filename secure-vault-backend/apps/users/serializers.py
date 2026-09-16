@@ -1,8 +1,9 @@
 from rest_framework import serializers
 
-from apps.users.models import Team, User, UserDeactivationLog, UserRole
+from apps.users.models import RefreshToken, Team, User, UserDeactivationLog, UserRole
 
 from util.cryptography import sha256
+
 class TeamSerializer(serializers.ModelSerializer):
     class Meta:
         model = Team
@@ -51,10 +52,43 @@ class UserSerializer(serializers.ModelSerializer):
 
 class DeactivationLogSerializer(serializers.ModelSerializer):
     user = serializers.PrimaryKeyRelatedField(queryset=User.objects.all(), write_only=True)
+
     class Meta:
         model = UserDeactivationLog
         fields = ["user", "timestamp", "reason"]
     
     def create(self, validated_data):
         return UserDeactivationLog.objects.create(**validated_data)
-    
+
+
+class RefreshTokenSerializer(serializers.ModelSerializer):
+    token = serializers.CharField(write_only=True)
+    user = serializers.PrimaryKeyRelatedField(
+        queryset=User.objects.all(), write_only=True, required=False
+    )
+
+    class Meta:
+        model = RefreshToken
+        fields = ["user", "token", "created_at", "expires_at", "revoked"]
+
+    def create(self, validated_data):
+        token = validated_data.pop("token")
+        return RefreshToken.objects.create(
+            **validated_data,
+            hash=sha256(token.encode()),
+            revoked=validated_data.get("revoked", False),
+        )
+
+    def update(self, instance, validated_data):
+        token = validated_data.pop("token", None)
+        if token is not None:
+            instance.hash = sha256(token.encode())
+
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+
+        if "revoked" not in validated_data:
+            instance.revoked = False
+
+        instance.save()
+        return instance

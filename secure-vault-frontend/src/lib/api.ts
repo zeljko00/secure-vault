@@ -1,5 +1,6 @@
 import axios from 'axios'
 import { AUTH_TOKEN_STORAGE_KEY, useAuthStore } from '@/stores/authStore'
+import { AUTH_REFRESH_TOKEN_STORAGE_KEY } from '@/stores/authStore'
 
 const AUTH_FAILURE_DETAILS = new Set([
   'Invalid authorization header',
@@ -31,17 +32,45 @@ api.interceptors.request.use(async (config) => {
 
 api.interceptors.response.use(
   (response) => response,
-  (error) => {
+  async (error) => {
     if (axios.isAxiosError(error)) {
       const status = error.response?.status
       const detail = error.response?.data?.detail
+      const originalRequest = error.config
 
       if (
         (status === 401 || status === 403)
         && typeof detail === 'string'
         && AUTH_FAILURE_DETAILS.has(detail)
       ) {
-        useAuthStore.getState().logout()
+        const refreshToken = localStorage.getItem(AUTH_REFRESH_TOKEN_STORAGE_KEY)
+
+        if (refreshToken && originalRequest && !(originalRequest as { _retry?: boolean })._retry && detail === 'Token expired') {
+          ;(originalRequest as { _retry?: boolean })._retry = true
+          console.log('Attempting to refresh access token using refresh token...')
+          try {
+            const refreshResponse = await axios.post('/api/users/refresh/', {
+              refresh_token: refreshToken,
+            })
+
+            const { access_token: accessToken, refresh_token: newRefreshToken } = refreshResponse.data as {
+              access_token: string
+              refresh_token: string
+            }
+
+            useAuthStore.getState().setAccessToken(accessToken)
+            useAuthStore.getState().setRefreshToken(newRefreshToken)
+
+            originalRequest.headers = originalRequest.headers ?? ({} as typeof originalRequest.headers)
+            ;(originalRequest.headers as Record<string, string>).Authorization = `Bearer ${accessToken}`
+
+            return api(originalRequest)
+          } catch {
+            useAuthStore.getState().logout()
+          }
+        } else {
+          useAuthStore.getState().logout()
+        }
 
         if (typeof window !== 'undefined' && !['/login', '/register'].includes(window.location.pathname)) {
           window.location.assign('/login')

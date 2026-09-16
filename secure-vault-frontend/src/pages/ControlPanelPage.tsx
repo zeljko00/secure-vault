@@ -35,9 +35,16 @@ const MANAGED_SETTINGS = [
     inputMode: 'numeric' as const,
   },
   {
+    key: 'jwt_ttl_minutes',
+    label: 'JWT TTL (minutes)',
+    description: 'Defines how long a JWT should remain valid before rotation.',
+    placeholder: '30',
+    inputMode: 'numeric' as const,
+  },
+  {
     key: 'session_ttl_minutes',
     label: 'Session TTL (minutes)',
-    description: 'Defines how long an authenticated session should remain valid before rotation or re-authentication.',
+    description: 'Defines how long an authenticated session should remain valid before re-authentication.',
     placeholder: '30',
     inputMode: 'numeric' as const,
   },

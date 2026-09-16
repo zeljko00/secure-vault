@@ -3,10 +3,12 @@ import type { User } from '@/types'
 
 export const AUTH_USER_STORAGE_KEY = '_sv_auth_user'
 export const AUTH_TOKEN_STORAGE_KEY = '_sv_access_token'
+export const AUTH_REFRESH_TOKEN_STORAGE_KEY = '_sv_refresh_token'
 
 interface AuthState {
   user: User | null
   accessToken: string | null
+  refreshToken: string | null
   /** In-memory AES-GCM key derived from master password — never persisted */
   masterKey: CryptoKey | null
   /** In-memory RSA private key — never persisted */
@@ -15,6 +17,7 @@ interface AuthState {
 
   setUser: (user: User | null) => void
   setAccessToken: (token: string | null) => void
+  setRefreshToken: (token: string | null) => void
   setMasterKey: (key: CryptoKey | null) => void
   setPrivateKey: (key: CryptoKey | null) => void
   setMfaPending: (pending: boolean) => void
@@ -40,9 +43,19 @@ function loadPersistedToken(): string | null {
   }
 }
 
+// Restore refresh token from localStorage on mount
+function loadPersistedRefreshToken(): string | null {
+  try {
+    return localStorage.getItem(AUTH_REFRESH_TOKEN_STORAGE_KEY)
+  } catch {
+    return null
+  }
+}
+
 export const useAuthStore = create<AuthState>((set) => ({
   user: loadPersistedUser(),
   accessToken: loadPersistedToken(),
+  refreshToken: loadPersistedRefreshToken(),
   masterKey: null,
   privateKey: null,
   mfaPending: false,
@@ -63,6 +76,14 @@ export const useAuthStore = create<AuthState>((set) => ({
     }
     set({ accessToken: token })
   },
+  setRefreshToken: (token) => {
+    if (token) {
+      localStorage.setItem(AUTH_REFRESH_TOKEN_STORAGE_KEY, token)
+    } else {
+      localStorage.removeItem(AUTH_REFRESH_TOKEN_STORAGE_KEY)
+    }
+    set({ refreshToken: token })
+  },
   setMasterKey:  (masterKey)  => set({ masterKey }),
   setPrivateKey: (privateKey) => set({ privateKey }),
   setMfaPending: (mfaPending) => set({ mfaPending }),
@@ -70,6 +91,14 @@ export const useAuthStore = create<AuthState>((set) => ({
   logout: () => {
     localStorage.removeItem(AUTH_USER_STORAGE_KEY)
     localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY)
-    set({ user: null, accessToken: null, masterKey: null, privateKey: null, mfaPending: false })
+    localStorage.removeItem(AUTH_REFRESH_TOKEN_STORAGE_KEY)
+    set({
+      user: null,
+      accessToken: null,
+      refreshToken: null,
+      masterKey: null,
+      privateKey: null,
+      mfaPending: false,
+    })
   },
 }))

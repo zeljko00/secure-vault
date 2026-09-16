@@ -7,11 +7,12 @@ from rest_framework.permissions import IsAuthenticated
 
 from django.core.exceptions import ValidationError
 
-from apps.users.models import Team, User, UserDeactivationLog, UserRole
-from apps.users.serializers import UserSerializer, TeamSerializer, DeactivationLogSerializer
+from apps.users.models import Team, User, UserDeactivationLog, UserRole, RefreshToken
+from apps.users.serializers import UserSerializer, TeamSerializer, DeactivationLogSerializer, RefreshTokenSerializer
 from util.cryptography import sha256
-from util.authentication import create_access_token
+from util.authentication import create_access_token, create_refresh_token
 from util.authorization import IsAdmin, IsTeamLead
+from django.utils import timezone
 
 def user_info(user):
     return {
@@ -42,10 +43,16 @@ class UsersView(APIView):
         serializer = UserSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
+        refresh_token_payload = create_refresh_token()
+        token_serializer = RefreshTokenSerializer(data=refresh_token_payload)
+        token_serializer.is_valid(raise_exception=True)
+        token_serializer.save(user=user)
+        
         return Response(
             {
                 "user": user_info(user),
-                "access_token": create_access_token(user),
+                "access_token": create_access_token(user.id),
+                "refresh_token": refresh_token_payload.get("token")
             },
             status=status.HTTP_201_CREATED,
         )
@@ -93,14 +100,71 @@ class UserLoginView(APIView):
                 status=status.HTTP_401_UNAUTHORIZED,
             )
         else:
+            refresh_token_payload = create_refresh_token()
+            existing_token = RefreshToken.objects.filter(user=user).first()
+
+            if existing_token:
+                token_serializer = RefreshTokenSerializer(instance=existing_token, data=refresh_token_payload, partial=True)
+            else:
+                token_serializer = RefreshTokenSerializer(data=refresh_token_payload)
+
+            token_serializer.is_valid(raise_exception=True)
+            if existing_token:
+                token_serializer.save()
+            else:
+                token_serializer.save(user=user)
+                
             return Response(
                 {
                     "user": user_info(user),
-                    "access_token": create_access_token(user),
+                    "access_token": create_access_token(user.id),
+                    "refresh_token": refresh_token_payload.get("token")
                 },
                 status=status.HTTP_200_OK,
             )
+class SessionRefreshView(APIView):
+    permission_classes = [AllowAny]
 
+    def post(self, request):
+        
+        refresh_token = request.data.get("refresh_token")
+        if not refresh_token:
+            return Response(
+                {"details": "Refresh token is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        
+        token = RefreshToken.objects.filter(hash=sha256(refresh_token.encode())).filter(revoked=False).filter(expires_at__gt=timezone.now()).first()
+        if not token:
+            return Response(
+                {"details": "Invalid or expired refresh token."},
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+            
+        print("Refresh token valid until:", token.expires_at)
+        
+        user = token.user
+        if UserDeactivationLog.objects.filter(user=user).exists():
+            return Response(
+                {"details": "User account is deactivated."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        new_refresh_token_payload = create_refresh_token()
+        new_token_serializer = RefreshTokenSerializer(
+            instance=token, data=new_refresh_token_payload, partial=True
+        )
+        new_token_serializer.is_valid(raise_exception=True)
+        new_token_serializer.save()
+        
+        return Response(
+            {
+                "user": user_info(user),
+                "access_token": create_access_token(user.id),
+                "refresh_token": new_refresh_token_payload.get("token")
+            },
+            status=status.HTTP_200_OK,
+        )
 class UserView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -238,6 +302,7 @@ class UserDeactivationView(APIView):
         serializer = DeactivationLogSerializer(data={**request.data, "user": user.id})
         serializer.is_valid(raise_exception=True)
         serializer.save(user=user)
+        RefreshToken.objects.filter(user=user).delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
     
 class UserPasswordView(APIView):

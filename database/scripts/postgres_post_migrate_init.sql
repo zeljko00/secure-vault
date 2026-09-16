@@ -38,6 +38,9 @@ WHERE to_regclass('public.django_content_type') IS NOT NULL\gexec
 SELECT format('GRANT SELECT, INSERT, UPDATE ON TABLE public.users_user TO %I', :'db_user')
 WHERE to_regclass('public.users_user') IS NOT NULL\gexec
 
+SELECT format('GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.users_refreshtoken TO %I', :'db_user')
+WHERE to_regclass('public.users_refreshtoken') IS NOT NULL\gexec
+
 SELECT format('GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.users_team TO %I', :'db_user')
 WHERE to_regclass('public.users_team') IS NOT NULL\gexec
 

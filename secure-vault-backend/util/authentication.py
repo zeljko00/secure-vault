@@ -1,4 +1,6 @@
 import jwt
+import uuid
+import secrets
 
 from datetime import datetime, timedelta, timezone
 from django.conf import settings
@@ -7,28 +9,31 @@ from rest_framework.exceptions import AuthenticationFailed
 from apps.settings.models import Setting
 from apps.users.models import User, UserDeactivationLog
 
-
-DEFAULT_ACCESS_TOKEN_DURATION_MINUTES = 30
+DEFAULT_ACCESS_TOKEN_DURATION_MINUTES = 1
+DEFAULT_REFRESH_TOKEN_DURATION_MINUTES = 60 * 24 * 7  # 7 days
 
 
 def get_access_token_duration_minutes() -> int:
+    return DEFAULT_ACCESS_TOKEN_DURATION_MINUTES
+
+def get_refresh_token_duration_minutes() -> int:
     setting = Setting.objects.filter(key="session_ttl_minutes").first()
     if not setting:
-        return DEFAULT_ACCESS_TOKEN_DURATION_MINUTES
+        return DEFAULT_REFRESH_TOKEN_DURATION_MINUTES
 
     try:
         duration_minutes = int(setting.value)
     except (TypeError, ValueError):
-        return DEFAULT_ACCESS_TOKEN_DURATION_MINUTES
+        return DEFAULT_REFRESH_TOKEN_DURATION_MINUTES
 
-    return duration_minutes if duration_minutes > 0 else DEFAULT_ACCESS_TOKEN_DURATION_MINUTES
+    return duration_minutes if duration_minutes > 0 else DEFAULT_REFRESH_TOKEN_DURATION_MINUTES
 
 
-def create_access_token(user, duration_minutes: int | None = None):
-    token_duration_minutes = duration_minutes or get_access_token_duration_minutes()
+def create_access_token(user_id):
     payload = {
-        "user_id": str(user.id),
-        "exp": datetime.now(timezone.utc) + timedelta(minutes=token_duration_minutes),
+        "user_id": str(user_id),
+        "exp": datetime.now(timezone.utc) + timedelta(minutes=get_access_token_duration_minutes()),
+        "jti": str(uuid.uuid4()),
     }
 
     return jwt.encode(
@@ -36,6 +41,14 @@ def create_access_token(user, duration_minutes: int | None = None):
         settings.JWT_SECRET_KEY,
         algorithm="HS256",
     )
+    
+def create_refresh_token():
+    payload = {
+        "token": secrets.token_urlsafe(64),
+        "created_at": datetime.now(timezone.utc),
+        "expires_at": datetime.now(timezone.utc) + timedelta(minutes=get_refresh_token_duration_minutes()),
+    }
+    return payload
 
 class CustomJWTAuthentication(BaseAuthentication):
 

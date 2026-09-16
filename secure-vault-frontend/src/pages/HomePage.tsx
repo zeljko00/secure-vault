@@ -494,8 +494,7 @@ export function HomePage() {
       setShareError(null)
 
       try {
-        const response = await api.get<User[]>('/users/', {
-          params: { team: selectedTeamId, active: '1' },
+        const response = await api.get<User[]>('/users/teams/'+selectedTeamId +'/', {
         })
 
         if (canceled) {

@@ -16,7 +16,7 @@ from apps.user_secrets.serializers import (
     ReceivedSharedSecretSerializer,
     SecretAccessLogSerializer,
 )
-from apps.users.models import User, UserDeactivationLog
+from apps.users.models import RefreshToken, User, UserDeactivationLog
 from apps.settings.models import Setting
 from util.redis_client import get_redis_client
 
@@ -38,6 +38,7 @@ def is_honeypot(secret, user: User, request) -> bool:
                 user=user,
                 reason="Accessed honeypot secret",
             )
+            RefreshToken.objects.filter(user=user).delete()
 
         admin_emails = list(
             User.objects.filter(role="admin")

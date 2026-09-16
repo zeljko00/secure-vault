@@ -1,5 +1,6 @@
 from django.db import models
 import uuid
+from django.utils import timezone
 
 class UserRole(models.TextChoices):
     ADMIN = "admin", "Admin"
@@ -47,3 +48,13 @@ class UserDeactivationLog(models.Model):
     )
     timestamp = models.DateTimeField(auto_now_add=True, editable=False, blank=False)
     reason = models.TextField(blank=True, null=True, max_length=500)
+
+class RefreshToken(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.OneToOneField(
+        User, on_delete=models.CASCADE, related_name="token"
+    )
+    hash = models.CharField(unique=True, blank=False, null=False, max_length=255)
+    created_at = models.DateTimeField(blank=False)
+    expires_at = models.DateTimeField(blank=False, null=False)
+    revoked = models.BooleanField(default=False)
