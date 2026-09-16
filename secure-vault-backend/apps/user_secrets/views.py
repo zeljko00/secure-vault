@@ -20,7 +20,7 @@ from apps.users.models import User, UserDeactivationLog
 from apps.settings.models import Setting
 from util.redis_client import get_redis_client
 
-from util.authorization import CanManageSecrets, CanManageLogs, CanManageSecret, CanManageSharedSecret, CanManageSharedSecrets, CanManageReceivedSecrets
+from util.authorization import CanManageSecrets, IsAdmin, CanManageSecret, CanManageSharedSecret, CanManageSharedSecrets, CanManageReceivedSecrets
 
 def is_honeypot(secret, user: User, request) -> bool:
     is_marked = (secret.marker == "honeypot")
@@ -80,7 +80,7 @@ class MySecretsView(APIView):
 
 
 class SecretAccessLogsView(APIView):
-    permission_classes = [IsAuthenticated, CanManageLogs]
+    permission_classes = [IsAuthenticated, IsAdmin]
     
     def get(self, request):
 
@@ -113,7 +113,16 @@ class SecretView(APIView):
             serializer.save()
             return Response(serializer.data)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    def delete(self, request, id):
+        secret = get_object_or_404(Secret, id=id)
+        secret.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
+
+class PublicSecretView(APIView):
+    permission_classes = [IsAuthenticated]
+    
     def get(self, request, id):
         # Check if honeypot endpoint is enabled
         enabled = Setting.objects.filter(key="hidden_endpoint_enabled").first()
@@ -127,33 +136,20 @@ class SecretView(APIView):
         
         serializer = SecretSerializer(secret)
         return Response(serializer.data, status=status.HTTP_200_OK)
-
-class SecretDeleteView(APIView):
-    permission_classes = [IsAuthenticated, CanManageSecret]
-
-    def delete(self, request, id):
-        secret = get_object_or_404(Secret, id=id)
-        if str(secret.owner.id) != str(request.user.id):  # TODO: take user from session
-            return Response(status=status.HTTP_403_FORBIDDEN)
-        secret.delete()
-        return Response(status=status.HTTP_204_NO_CONTENT)
-
-
+    
 class ShareSecretView(APIView):
-    permission_classes = [IsAuthenticated, CanManageSharedSecrets]
+    permission_classes = [IsAuthenticated, CanManageSharedSecret]
 
     def post(self, request, id):
         secret = get_object_or_404(Secret, id=id)
+        self.check_object_permissions(request, secret)
+        
         secret_ciphertext = request.data.get("cipher_text")
 
         serializer = SharedSecretSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
-        if str(secret.owner.id) != str(
-            request.user.id
-        ):
-            return Response(status=status.HTTP_403_FORBIDDEN)
-        elif str(serializer.validated_data["sharing_with"].id) == str(secret.owner.id):
+        if str(serializer.validated_data["sharing_with"].id) == str(secret.owner.id):
             return Response(
                 {"detail": "You cannot share a secret with yourself."},
                 status=status.HTTP_400_BAD_REQUEST,
@@ -195,13 +191,13 @@ class SharedSecretView(APIView):
         shared = get_object_or_404(
             SharedSecret, id=id
         )
+        self.check_object_permissions(request, shared)
+        
         SecretAccessLog.objects.create(
             secret=shared.secret,
             user_id=request.user.id,
             ip_address=request.META.get("X-Forwarded-For", request.META.get("REMOTE_ADDR", "")).split(",")[0].strip()
         )
-        if str(request.user.id) != str(shared.sharing_with.id):
-            return Response(status=status.HTTP_403_FORBIDDEN)
 
         if shared.sharing_revoked:
             return Response(status=status.HTTP_404_NOT_FOUND)
@@ -227,31 +223,25 @@ class SharedSecretView(APIView):
 
     def delete(self, request, id):
         shared = get_object_or_404(SharedSecret, id=id)
-        if str(request.user.id) != str(shared.secret.owner.id):
-            return Response(status=status.HTTP_403_FORBIDDEN)
         shared.sharing_revoked = True
         shared.save()
         get_redis_client().delete(str(shared.id))
         return Response(status=status.HTTP_204_NO_CONTENT)
 
-class MyOwnedSharedSecretsView(APIView):
+class MySharedSecretsView(APIView):
     permission_classes = [IsAuthenticated, CanManageSharedSecrets]
 
     def get(self, request):
 
-        user = request.user
-        if user.role != "tl":
-            return Response(status=status.HTTP_403_FORBIDDEN)
-
         shared_queryset_1 = (
             SharedSecret.objects
-            .filter(secret__owner=user, sharing_revoked=False, sharing_expires_at__gt=timezone.now())
+            .filter(secret__owner=request.user, sharing_revoked=False, sharing_expires_at__gt=timezone.now())
             .select_related("secret", "sharing_with")
             .order_by("secret__label", "sharing_with__username")
         )
         shared_queryset_2 = (
             SharedSecret.objects
-            .filter(secret__owner=user, sharing_revoked=False, sharing_expires_at__isnull=True)
+            .filter(secret__owner=request.user, sharing_revoked=False, sharing_expires_at__isnull=True)
             .select_related("secret", "sharing_with")
             .order_by("secret__label", "sharing_with__username")
         )
@@ -259,7 +249,7 @@ class MyOwnedSharedSecretsView(APIView):
         return Response(serializer.data, status=status.HTTP_200_OK)
 
 
-class MyReceivedSharedSecretsView(APIView):
+class MyReceivedSecretsView(APIView):
     permission_classes = [IsAuthenticated, CanManageReceivedSecrets]
 
     def get(self, request):
@@ -275,7 +265,7 @@ class MyReceivedSharedSecretsView(APIView):
         return Response(serializer.data, status=status.HTTP_200_OK)
     
 class HoneypotAccessLogsView(APIView):
-    permission_classes = [IsAuthenticated, CanManageLogs]
+    permission_classes = [IsAuthenticated, IsAdmin]
 
     def get(self, request):
 

@@ -35,7 +35,7 @@ class AccessLog(models.Model):
     ip_address = models.GenericIPAddressField(blank=True, null=True)
     details = models.TextField(blank=True, null=True)
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    secret = models.ForeignKey(Secret, on_delete=models.SET_NULL, null=True, blank=True)
+    secret = models.ForeignKey(Secret, on_delete=models.CASCADE, null=True, blank=True)
 
     class Meta:
         abstract = True

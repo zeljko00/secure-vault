@@ -134,7 +134,7 @@ export function HomePage() {
     setOwnedSharedSecretsError(null)
 
     try {
-      const response = await api.get<OwnedSharedSecret[]>('/secrets/shared/me/', {
+      const response = await api.get<OwnedSharedSecret[]>('/secrets/shared/by-me/', {
         params: { user: activeUser.id },
       })
       setOwnedSharedSecrets(Array.isArray(response.data) ? response.data : [])
@@ -366,7 +366,7 @@ export function HomePage() {
     setDeletingSecretId(secret.id)
 
     try {
-      await api.delete(`/secrets/${secret.id}/delete/`, {
+      await api.delete(`/secrets/${secret.id}/`, {
         params: { user: user.id },
       })
 

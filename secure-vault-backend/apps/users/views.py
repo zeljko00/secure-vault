@@ -11,7 +11,7 @@ from apps.users.models import Team, User, UserDeactivationLog, UserRole
 from apps.users.serializers import UserSerializer, TeamSerializer, DeactivationLogSerializer
 from util.cryptography import sha256
 from util.authentication import create_access_token
-from util.authorization import IsAdmin
+from util.authorization import IsAdmin, IsTeamLead
 
 def user_info(user):
     return {
@@ -31,6 +31,7 @@ def roles():
 class UsersView(APIView):
     permission_classes = [AllowAny]
 
+    # Specifies different permissions for different HTTP methods on same view
     def get_permissions(self):
         if self.request.method == "POST":
             return [AllowAny()]
@@ -137,7 +138,6 @@ class UserRoleView(APIView):
 class TeamsView(APIView):
     permission_classes = [IsAuthenticated, IsAdmin]
 
-
     def get(self, request):
         teams = Team.objects.all().order_by("name")
 
@@ -169,12 +169,29 @@ class TeamsView(APIView):
 
 
 class TeamView(APIView):
-    permission_classes = [IsAuthenticated, IsAdmin]
+    def get_permissions(self):
+        if self.request.method == "GET":
+            return [IsAuthenticated(), IsTeamLead()]
+        else:
+            return [IsAuthenticated(), IsAdmin()]
 
     def delete(self, request, id):
         team = get_object_or_404(Team, id=id)
         team.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
+    
+    def get(self, request, id):
+        team = get_object_or_404(Team, id=id)
+        self.check_object_permissions(request, team)
+
+        users = User.objects.all().prefetch_related("teams")
+        users = users.filter(teams__id=id)
+        users = users.filter(deactivation_log__isnull=True)
+
+        return Response(
+            [user_info(user) for user in users],
+            status=status.HTTP_200_OK,
+        )
     
 class UserTeamView(APIView):
     permission_classes = [IsAuthenticated, IsAdmin]
