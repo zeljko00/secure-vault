@@ -44,6 +44,9 @@ def create_access_token(user_id):
         "exp": datetime.now(timezone.utc) + timedelta(minutes=get_access_token_duration_minutes()),
         "jti": str(uuid.uuid4()),
     }
+    
+    print("Issued access token expires at:", payload["exp"].isoformat())
+    print("=====================================================")
 
     return jwt.encode(
         payload,
@@ -57,6 +60,10 @@ def create_refresh_token():
         "created_at": datetime.now(timezone.utc),
         "expires_at": datetime.now(timezone.utc) + timedelta(minutes=get_refresh_token_duration_minutes()),
     }
+    print("Issued refresh token expires at:", payload["expires_at"].isoformat())
+    print("=====================================================")
+    
+
     return payload
 
 class CustomJWTAuthentication(BaseAuthentication):

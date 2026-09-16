@@ -122,6 +122,7 @@ class UsersView(APIView):
         )
         
 class UserLoginView(APIView):
+    authentication_classes = []
     permission_classes = [AllowAny]
 
     def post(self, request):
@@ -163,6 +164,7 @@ class UserLoginView(APIView):
             )
             return set_auth_cookies(response, access_token, refresh_token)
 class SessionRefreshView(APIView):
+    authentication_classes = []
     permission_classes = [AllowAny]
 
     def post(self, request):
@@ -181,31 +183,21 @@ class SessionRefreshView(APIView):
                 {"details": "Invalid or expired refresh token."},
                 status=status.HTTP_401_UNAUTHORIZED,
             )
-            
-        print("Refresh token valid until:", token.expires_at)
-        
+
         user = token.user
         if UserDeactivationLog.objects.filter(user=user).exists():
             return Response(
                 {"details": "User account is deactivated."},
                 status=status.HTTP_403_FORBIDDEN,
             )
-
-        new_refresh_token_payload = create_refresh_token()
-        new_token_serializer = RefreshTokenSerializer(
-            instance=token, data=new_refresh_token_payload, partial=True
-        )
-        new_token_serializer.is_valid(raise_exception=True)
-        new_token_serializer.save()
         
         access_token = create_access_token(user.id)
-        new_refresh_token = new_refresh_token_payload.get("token")
         
         response = Response(
             {"user": user_info(user)},
             status=status.HTTP_200_OK,
         )
-        return set_auth_cookies(response, access_token, new_refresh_token)
+        return set_auth_cookies(response, access_token, refresh_token)
 class UserView(APIView):
     permission_classes = [IsAuthenticated]
 

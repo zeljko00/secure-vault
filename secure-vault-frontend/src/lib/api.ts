@@ -5,8 +5,15 @@ const AUTH_FAILURE_DETAILS = new Set([
   'Invalid authorization header',
   'Invalid token',
   'Token expired',
+  'Authentication credentials were not provided.',
   'User is deactivated',
   'User not found',
+])
+
+const REFRESHABLE_AUTH_FAILURE_DETAILS = new Set([
+  'Invalid token',
+  'Token expired',
+  'Authentication credentials were not provided.',
 ])
 
 export const api = axios.create({
@@ -31,8 +38,10 @@ api.interceptors.response.use(
   async (error) => {
     if (axios.isAxiosError(error)) {
       const status = error.response?.status
-      const detail = error.response?.data?.detail
+      const detail = error.response?.data?.detail ?? error.response?.data?.details
       const originalRequest = error.config
+      const requestUrl = originalRequest?.url ?? ''
+      const isRefreshRequest = requestUrl.includes('/users/refresh/')
 
       if (
         (status === 401 || status === 403)
@@ -40,7 +49,12 @@ api.interceptors.response.use(
         && AUTH_FAILURE_DETAILS.has(detail)
       ) {
         // Attempt to refresh using the refresh token cookie
-        if (originalRequest && !(originalRequest as { _retry?: boolean })._retry && detail === 'Token expired') {
+        if (
+          originalRequest
+          && !(originalRequest as { _retry?: boolean })._retry
+          && !isRefreshRequest
+          && REFRESHABLE_AUTH_FAILURE_DETAILS.has(detail)
+        ) {
           ;(originalRequest as { _retry?: boolean })._retry = true
           console.log('Attempting to refresh access token...')
           try {
