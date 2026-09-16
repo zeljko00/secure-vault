@@ -77,7 +77,7 @@ function downloadPrivateKeyBackup(payload: PrivateKeyBackupFile): void {
 
 export function RegisterPage() {
   const navigate = useNavigate()
-  const { setUser, setAccessToken, setRefreshToken, setMfaPending } = useAuthStore()
+  const { setUser, setMfaPending } = useAuthStore()
   const [apiError, setApiError] = useState<string | null>(null)
   const [isGeneratingKeys, setIsGeneratingKeys] = useState(false)
   const [masterPassword, setMasterPassword] = useState<string | null>(null)
@@ -190,10 +190,8 @@ export function RegisterPage() {
         pub_key: pubKey,
       }
 
-      const response = await api.post<{ user: User; access_token: string; refresh_token: string }>('/users/', user)
+      const response = await api.post<{ user: User }>('/users/', user)
       setPendingRegisteredUser(response.data.user)
-      setAccessToken(response.data.access_token)
-      setRefreshToken(response.data.refresh_token)
       const generatedMasterPassword = generateMasterPassword(masterPasswordLength)
       const encryptedPrivateKey = await encryptPrivateKeyForStorage(keyPair.privateKey, generatedMasterPassword)
       await storeEncryptedPrivateKey(response.data.user.id, encryptedPrivateKey)

@@ -6,6 +6,7 @@ from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
 
 from django.core.exceptions import ValidationError
+from django.conf import settings
 
 from apps.users.models import Team, User, UserDeactivationLog, UserRole, RefreshToken
 from apps.users.serializers import UserSerializer, TeamSerializer, DeactivationLogSerializer, RefreshTokenSerializer
@@ -25,6 +26,37 @@ def user_info(user):
         "pub_key": user.pub_key,
         "join_timestamp": user.join_timestamp,
     }
+
+def set_auth_cookies(response, access_token, refresh_token):
+    """Set access and refresh tokens as HttpOnly, Secure, SameSite cookies."""
+    from datetime import datetime, timedelta, timezone as dt_timezone
+    from util.authentication import get_refresh_token_duration_minutes, get_access_token_duration_minutes
+    
+    # Calculate expiry times
+    access_max_age = get_access_token_duration_minutes() * 60
+    refresh_max_age = get_refresh_token_duration_minutes() * 60
+    
+    response.set_cookie(
+        key='access_token',
+        value=access_token,
+        max_age=access_max_age,
+        path='/',
+        httponly=True,
+        secure=settings.SESSION_COOKIE_SECURE,
+        samesite=settings.SESSION_COOKIE_SAMESITE,
+    )
+    
+    response.set_cookie(
+        key='refresh_token',
+        value=refresh_token,
+        max_age=refresh_max_age,
+        path='/',
+        httponly=True,
+        secure=settings.SESSION_COOKIE_SECURE,
+        samesite=settings.SESSION_COOKIE_SAMESITE,
+    )
+    
+    return response
     
 def roles():
     return {role for role, role_capitalized in UserRole.choices}
@@ -48,14 +80,14 @@ class UsersView(APIView):
         token_serializer.is_valid(raise_exception=True)
         token_serializer.save(user=user)
         
-        return Response(
-            {
-                "user": user_info(user),
-                "access_token": create_access_token(user.id),
-                "refresh_token": refresh_token_payload.get("token")
-            },
+        access_token = create_access_token(user.id)
+        refresh_token = refresh_token_payload.get("token")
+        
+        response = Response(
+            {"user": user_info(user)},
             status=status.HTTP_201_CREATED,
         )
+        return set_auth_cookies(response, access_token, refresh_token)
 
     def get(self, request):
         role = request.query_params.get("role")
@@ -122,20 +154,21 @@ class UserLoginView(APIView):
             else:
                 token_serializer.save(user=user)
                 
-            return Response(
-                {
-                    "user": user_info(user),
-                    "access_token": create_access_token(user.id),
-                    "refresh_token": refresh_token_payload.get("token")
-                },
+            access_token = create_access_token(user.id)
+            refresh_token = refresh_token_payload.get("token")
+            
+            response = Response(
+                {"user": user_info(user)},
                 status=status.HTTP_200_OK,
             )
+            return set_auth_cookies(response, access_token, refresh_token)
 class SessionRefreshView(APIView):
     permission_classes = [AllowAny]
 
     def post(self, request):
+        # Try to get refresh token from cookies first, then from request body
+        refresh_token = request.COOKIES.get("refresh_token") or request.data.get("refresh_token")
         
-        refresh_token = request.data.get("refresh_token")
         if not refresh_token:
             return Response(
                 {"details": "Refresh token is required."},
@@ -165,14 +198,14 @@ class SessionRefreshView(APIView):
         new_token_serializer.is_valid(raise_exception=True)
         new_token_serializer.save()
         
-        return Response(
-            {
-                "user": user_info(user),
-                "access_token": create_access_token(user.id),
-                "refresh_token": new_refresh_token_payload.get("token")
-            },
+        access_token = create_access_token(user.id)
+        new_refresh_token = new_refresh_token_payload.get("token")
+        
+        response = Response(
+            {"user": user_info(user)},
             status=status.HTTP_200_OK,
         )
+        return set_auth_cookies(response, access_token, new_refresh_token)
 class UserView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -182,6 +215,17 @@ class UserView(APIView):
             user_info(user),
             status=status.HTTP_200_OK,
         )
+
+
+class UserLogoutView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        """Clear authentication cookies."""
+        response = Response(status=status.HTTP_200_OK)
+        response.delete_cookie('access_token', path='/')
+        response.delete_cookie('refresh_token', path='/')
+        return response
 
 
 class UserRoleView(APIView):

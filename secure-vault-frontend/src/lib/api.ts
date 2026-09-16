@@ -1,6 +1,5 @@
 import axios from 'axios'
-import { AUTH_TOKEN_STORAGE_KEY, useAuthStore } from '@/stores/authStore'
-import { AUTH_REFRESH_TOKEN_STORAGE_KEY } from '@/stores/authStore'
+import { useAuthStore } from '@/stores/authStore'
 
 const AUTH_FAILURE_DETAILS = new Set([
   'Invalid authorization header',
@@ -12,18 +11,15 @@ const AUTH_FAILURE_DETAILS = new Set([
 
 export const api = axios.create({
   baseURL: '/api',
-  withCredentials: true, // HttpOnly cookies
+  withCredentials: true, // Include HttpOnly cookies automatically
   headers: { 'Content-Type': 'application/json' },
 })
 
-// Attach device fingerprint and access token headers on every request
+// Attach device fingerprint on every request
 api.interceptors.request.use(async (config) => {
   try {
     const fp = localStorage.getItem('_sv_device_id')
     if (fp) config.headers['X-Device-Id'] = fp
-    
-    const token = localStorage.getItem(AUTH_TOKEN_STORAGE_KEY)
-    if (token) config.headers['Authorization'] = `Bearer ${token}`
   } catch {
     // localStorage not yet initialised — safe to skip
   }
@@ -43,27 +39,17 @@ api.interceptors.response.use(
         && typeof detail === 'string'
         && AUTH_FAILURE_DETAILS.has(detail)
       ) {
-        const refreshToken = localStorage.getItem(AUTH_REFRESH_TOKEN_STORAGE_KEY)
-
-        if (refreshToken && originalRequest && !(originalRequest as { _retry?: boolean })._retry && detail === 'Token expired') {
+        // Attempt to refresh using the refresh token cookie
+        if (originalRequest && !(originalRequest as { _retry?: boolean })._retry && detail === 'Token expired') {
           ;(originalRequest as { _retry?: boolean })._retry = true
-          console.log('Attempting to refresh access token using refresh token...')
+          console.log('Attempting to refresh access token...')
           try {
-            const refreshResponse = await axios.post('/api/users/refresh/', {
-              refresh_token: refreshToken,
+            // Refresh endpoint will use refresh_token cookie automatically
+            await axios.post('/api/users/refresh/', {}, { 
+              withCredentials: true 
             })
 
-            const { access_token: accessToken, refresh_token: newRefreshToken } = refreshResponse.data as {
-              access_token: string
-              refresh_token: string
-            }
-
-            useAuthStore.getState().setAccessToken(accessToken)
-            useAuthStore.getState().setRefreshToken(newRefreshToken)
-
-            originalRequest.headers = originalRequest.headers ?? ({} as typeof originalRequest.headers)
-            ;(originalRequest.headers as Record<string, string>).Authorization = `Bearer ${accessToken}`
-
+            // Retry original request (cookies are already updated)
             return api(originalRequest)
           } catch {
             useAuthStore.getState().logout()

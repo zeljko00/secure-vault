@@ -54,17 +54,11 @@ class CustomJWTAuthentication(BaseAuthentication):
 
     def authenticate(self, request):
 
-        header = request.headers.get("Authorization")
-
-        if not header:
+        # Try to get token from HttpOnly cookie
+        token = request.COOKIES.get("access_token")
+        
+        if not token:
             return None
-
-        if not header.startswith("Bearer "):
-            raise AuthenticationFailed(
-                "Invalid authorization header"
-            )
-
-        token = header[7:]
 
         try:
             payload = jwt.decode(
