@@ -16,3 +16,7 @@ export function base64ToUint8Array(b64: string): Uint8Array {
 export function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
   return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer
 }
+
+export function generateDeviceId(): string {
+  return crypto.randomUUID() + new Date().toISOString()
+}

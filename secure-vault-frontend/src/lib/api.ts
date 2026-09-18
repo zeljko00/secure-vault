@@ -1,5 +1,5 @@
-import axios from 'axios'
-import { useAuthStore } from '@/stores/authStore'
+import axios, { AxiosHeaders, type InternalAxiosRequestConfig } from 'axios'
+import { useAuthStore, loadPersistedDeviceId } from '@/stores/authStore'
 
 const AUTH_FAILURE_DETAILS = new Set([
   'Invalid authorization header',
@@ -8,6 +8,7 @@ const AUTH_FAILURE_DETAILS = new Set([
   'Authentication credentials were not provided.',
   'User is deactivated',
   'User not found',
+  'Invalid device id',
 ])
 
 const REFRESHABLE_AUTH_FAILURE_DETAILS = new Set([
@@ -22,16 +23,19 @@ export const api = axios.create({
   headers: { 'Content-Type': 'application/json' },
 })
 
-// Attach device fingerprint on every request
-api.interceptors.request.use(async (config) => {
-  try {
-    const fp = localStorage.getItem('_sv_device_id')
-    if (fp) config.headers['X-Device-Id'] = fp
-  } catch {
-    // localStorage not yet initialised — safe to skip
+function attachDeviceId(config: InternalAxiosRequestConfig): InternalAxiosRequestConfig {
+  const deviceId = loadPersistedDeviceId() // Load device ID from localStorage
+
+  if (deviceId) {
+    const headers = AxiosHeaders.from(config.headers)
+    headers.set('X-Device-Id', deviceId)
+    config.headers = headers
   }
+
   return config
-})
+}
+
+api.interceptors.request.use((config) => attachDeviceId(config))
 
 api.interceptors.response.use(
   (response) => response,
@@ -59,8 +63,9 @@ api.interceptors.response.use(
           console.log('Attempting to refresh access token...')
           try {
             // Refresh endpoint will use refresh_token cookie automatically
-            await axios.post('/api/users/refresh/', {}, { 
-              withCredentials: true 
+            await axios.post('/api/users/refresh/', {}, {
+              withCredentials: true,
+              headers: { 'Content-Type': 'application/json' },
             })
 
             // Retry original request (cookies are already updated)

@@ -13,6 +13,17 @@ DEFAULT_ACCESS_TOKEN_DURATION_MINUTES = 1
 DEFAULT_REFRESH_TOKEN_DURATION_MINUTES = 60 * 24 * 7  # 7 days
 
 
+def get_request_device_id(request):
+    device_id = request.headers.get("X-Device-Id")
+    if not device_id:
+        device_id = request.META.get("HTTP_X_DEVICE_ID")
+
+    if not device_id:
+        raise AuthenticationFailed("Invalid device id")
+
+    return device_id
+
+
 def get_access_token_duration_minutes() -> int:
     setting = Setting.objects.filter(key="jwt_ttl_minutes").first()
     if not setting:
@@ -38,9 +49,10 @@ def get_refresh_token_duration_minutes() -> int:
     return duration_minutes if duration_minutes > 0 else DEFAULT_REFRESH_TOKEN_DURATION_MINUTES
 
 
-def create_access_token(user_id):
+def create_access_token(user_id, device_id):
     payload = {
         "user_id": str(user_id),
+        "device_id": str(device_id),
         "exp": datetime.now(timezone.utc) + timedelta(minutes=get_access_token_duration_minutes()),
         "jti": str(uuid.uuid4()),
     }
@@ -90,11 +102,16 @@ class CustomJWTAuthentication(BaseAuthentication):
             raise AuthenticationFailed("Invalid token")
 
         user_id = payload.get("user_id")
+        token_device_id = payload.get("device_id")
+        request_device_id = request.headers.get("X-Device-Id") or request.META.get("HTTP_X_DEVICE_ID")
 
         if user_id is None:
             raise AuthenticationFailed(
                 "Invalid token"
             )
+
+        if not token_device_id or not request_device_id or token_device_id != request_device_id:
+            raise AuthenticationFailed("Invalid device id")
 
         try:
             user = User.objects.get(

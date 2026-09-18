@@ -1,7 +1,9 @@
 import { create } from 'zustand'
 import type { User } from '@/types'
+import { generateDeviceId } from '@/lib/utils'
 
 export const AUTH_USER_STORAGE_KEY = '_sv_auth_user'
+export const AUTH_DEVICE_ID_STORAGE_KEY = '_sv_device_id'
 
 interface AuthState {
   user: User | null
@@ -30,6 +32,24 @@ function loadPersistedUser(): User | null {
   }
 }
 
+export function loadPersistedDeviceId(): string {
+  try {
+    const stored = localStorage.getItem(AUTH_DEVICE_ID_STORAGE_KEY)
+    if (stored) {
+      const parsed = JSON.parse(stored) as { deviceId?: unknown }
+      if (typeof parsed.deviceId === 'string' && parsed.deviceId) {
+        return parsed.deviceId
+      }
+    }
+
+    const generated = generateDeviceId()
+    localStorage.setItem(AUTH_DEVICE_ID_STORAGE_KEY, JSON.stringify({ deviceId: generated }))
+    return generated
+  } catch {
+    return "unknown"
+  }
+}
+
 export const useAuthStore = create<AuthState>((set) => ({
   user: loadPersistedUser(),
   masterKey: null,
@@ -49,15 +69,18 @@ export const useAuthStore = create<AuthState>((set) => ({
   setPrivateKey: (privateKey) => set({ privateKey }),
   setMfaPending: (mfaPending) => set({ mfaPending }),
   setMfaChallengeId: (mfaChallengeId) => set({ mfaChallengeId }),
+  
 
   logout: () => {
     localStorage.removeItem(AUTH_USER_STORAGE_KEY)
+    // it is not needed to delete device id on logout since it identifies the device, not the user.
     set({
       user: null,
       masterKey: null,
       privateKey: null,
       mfaPending: false,
       mfaChallengeId: null,
+      deviceId: null,
     })
   },
 }))

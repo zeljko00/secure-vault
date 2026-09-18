@@ -11,7 +11,7 @@ from django.conf import settings
 from apps.users.models import Team, User, UserDeactivationLog, UserRole, RefreshToken
 from apps.users.serializers import UserSerializer, TeamSerializer, DeactivationLogSerializer, RefreshTokenSerializer
 from util.cryptography import sha256, CustomArgon2PasswordHasher
-from util.authentication import create_access_token, create_refresh_token
+from util.authentication import create_access_token, create_refresh_token, get_request_device_id
 from util.authorization import IsAdmin, IsTeamLead
 from django.utils import timezone
 from util.mfa import (
@@ -70,7 +70,7 @@ def roles():
     return {role for role, role_capitalized in UserRole.choices}
 
 
-def issue_user_session(user):
+def issue_user_session(user, device_id):
     refresh_token_payload = create_refresh_token()
     existing_token = RefreshToken.objects.filter(user=user).first()
 
@@ -90,7 +90,13 @@ def issue_user_session(user):
     else:
         token_serializer.save(user=user)
 
-    access_token = create_access_token(user.id)
+    if not device_id:
+        raise ValueError("device_id is required")
+
+    user.device_id = device_id
+    user.save(update_fields=["device_id"])
+
+    access_token = create_access_token(user.id, device_id)
     refresh_token = refresh_token_payload.get("token")
 
     response = Response(
@@ -253,6 +259,7 @@ class MFAVerifyView(APIView):
             )
 
         user = get_object_or_404(User, id=user_id)
+        device_id = get_request_device_id(request)
 
         if challenge_type == "registration":
             secret_base32 = challenge.get("secret_base32")
@@ -273,17 +280,25 @@ class MFAVerifyView(APIView):
             user.mfa_setup_pending = False
             user.save(update_fields=["mfa_secret", "mfa_setup_pending"])
             delete_mfa_challenge(challenge_id)
-            return issue_user_session(user)
+            return issue_user_session(user, device_id)
 
         if challenge_type == "login":
-            if not verify_totp_code(user.mfa_secret, code):
+            secret_base32 = user.mfa_secret
+            if not secret_base32:
+                delete_mfa_challenge(challenge_id)
+                return Response(
+                    {"detail": "Invalid MFA challenge."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            if not verify_totp_code(secret_base32, code):
                 return Response(
                     {"detail": "Invalid verification code."},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
             delete_mfa_challenge(challenge_id)
-            return issue_user_session(user)
+            return issue_user_session(user, device_id)
 
         delete_mfa_challenge(challenge_id)
         return Response(
@@ -317,8 +332,15 @@ class SessionRefreshView(APIView):
                 {"details": "User account is deactivated."},
                 status=status.HTTP_403_FORBIDDEN,
             )
+
+        device_id = request.headers.get("X-Device-Id") or request.META.get("HTTP_X_DEVICE_ID")
+        if not device_id or user.device_id != device_id:
+            return Response(
+                {"details": "Invalid device id."},
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
         
-        access_token = create_access_token(user.id)
+        access_token = create_access_token(user.id, device_id)
         
         response = Response(
             {"user": user_info(user)},
