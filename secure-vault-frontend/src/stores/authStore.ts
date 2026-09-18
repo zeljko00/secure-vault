@@ -10,11 +10,13 @@ interface AuthState {
   /** In-memory RSA private key — never persisted */
   privateKey: CryptoKey | null
   mfaPending: boolean
+  mfaChallengeId: string | null
 
   setUser: (user: User | null) => void
   setMasterKey: (key: CryptoKey | null) => void
   setPrivateKey: (key: CryptoKey | null) => void
   setMfaPending: (pending: boolean) => void
+  setMfaChallengeId: (challengeId: string | null) => void
   logout: () => void
 }
 
@@ -33,6 +35,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   masterKey: null,
   privateKey: null,
   mfaPending: false,
+  mfaChallengeId: null,
 
   setUser: (user) => {
     if (user) {
@@ -45,6 +48,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   setMasterKey:  (masterKey)  => set({ masterKey }),
   setPrivateKey: (privateKey) => set({ privateKey }),
   setMfaPending: (mfaPending) => set({ mfaPending }),
+  setMfaChallengeId: (mfaChallengeId) => set({ mfaChallengeId }),
 
   logout: () => {
     localStorage.removeItem(AUTH_USER_STORAGE_KEY)
@@ -53,6 +57,7 @@ export const useAuthStore = create<AuthState>((set) => ({
       masterKey: null,
       privateKey: null,
       mfaPending: false,
+      mfaChallengeId: null,
     })
   },
 }))

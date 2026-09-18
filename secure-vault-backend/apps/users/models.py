@@ -26,6 +26,8 @@ class User(models.Model):
     email = models.EmailField(unique=True, blank=False, null=False)
     password_hash = models.CharField(blank=False, null=False, max_length=128)
     pub_key = models.TextField(blank=False, null=False)
+    mfa_setup_pending = models.BooleanField(default=False)
+    mfa_secret = models.TextField(blank=True, null=True)
     join_timestamp = models.DateTimeField(
         auto_now_add=True, editable=False, blank=False, null=False
     )

@@ -3,23 +3,22 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import axios from 'axios'
-import { Lock } from 'lucide-react'
-import { Link, useNavigate } from 'react-router-dom'
+import { ShieldCheck } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
 import { api } from '@/lib/api'
 import { useAuthStore } from '@/stores/authStore'
 import { cn } from '@/lib/utils'
 import type { User } from '@/types'
-import { log } from '@/lib/debug'
 
 const schema = z.object({
-  username: z.string().min(1, 'Required'),
-  password: z.string().min(1, 'Required'),
+  code: z.string().regex(/^\d{6}$/, 'Enter the 6-digit code from your authenticator app'),
 })
+
 type FormValues = z.infer<typeof schema>
 
-export function LoginPage() {
+export function MFAPage() {
   const navigate = useNavigate()
-  const { setUser, setMfaPending, setMfaChallengeId } = useAuthStore()
+  const { mfaChallengeId, setUser, setMfaPending, setMfaChallengeId } = useAuthStore()
   const [apiError, setApiError] = useState<string | null>(null)
 
   const {
@@ -29,30 +28,26 @@ export function LoginPage() {
   } = useForm<FormValues>({ resolver: zodResolver(schema) })
 
   const onSubmit = async (data: FormValues) => {
+    if (!mfaChallengeId) {
+      navigate('/login', { replace: true })
+      return
+    }
+
     setApiError(null)
+
     try {
-      const res = await api.post<{ user?: User; mfa_required?: boolean; challenge_id?: string }>('/users/login/', data)
-      log('Login response:', res.data)
+      const response = await api.post<{ user: User }>('/users/mfa/', {
+        challenge_id: mfaChallengeId,
+        code: data.code,
+      })
 
-      if (res.data.mfa_required && res.data.challenge_id) {
-        setMfaPending(true)
-        setMfaChallengeId(res.data.challenge_id)
-        navigate('/login/mfa', { replace: true })
-        return
-      }
-
-      if (res.data.user) {
-        setUser(res.data.user)
-        setMfaPending(false)
-        setMfaChallengeId(null)
-        navigate(res.data.user.role === 'admin' ? '/admin' : '/', { replace: true })
-        return
-      }
-
-      setApiError('Unexpected login response')
+      setUser(response.data.user)
+      setMfaPending(false)
+      setMfaChallengeId(null)
+      navigate(response.data.user.role === 'admin' ? '/admin' : '/', { replace: true })
     } catch (err: unknown) {
       if (axios.isAxiosError(err) && err.response) {
-        setApiError(err.response.data?.detail ?? err.response.data?.details ?? 'Invalid username or password')
+        setApiError(err.response.data?.detail ?? err.response.data?.details ?? 'Invalid verification code')
       } else {
         setApiError('Network error — please try again')
       }
@@ -62,34 +57,22 @@ export function LoginPage() {
   return (
     <div className="min-h-screen flex items-center justify-center px-4">
       <div className="w-full max-w-sm glass p-8 flex flex-col gap-6">
-        {/* Header */}
         <div className="text-center flex flex-col items-center gap-3">
           <span className="text-[var(--color-primary)] drop-shadow-[0_0_12px_var(--color-primary)]">
-            <Lock size={36} />
+            <ShieldCheck size={36} />
           </span>
-          <h1 className="text-2xl font-semibold tracking-tight text-[var(--color-text)]">
-            SecureVault
-          </h1>
-          <p className="text-sm text-[var(--color-text-dim)]">Zero-knowledge secret management</p>
+          <h1 className="text-2xl font-semibold tracking-tight text-[var(--color-text)]">MFA verification</h1>
+          <p className="text-sm text-[var(--color-text-dim)]">Enter the current code from your authenticator app</p>
         </div>
 
         <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
-          <Field label="Username" error={errors.username?.message}>
+          <Field label="Verification code" error={errors.code?.message}>
             <input
-              {...register('username')}
-              autoComplete="username"
+              {...register('code')}
+              inputMode="numeric"
+              autoComplete="one-time-code"
               className={inputCls}
-              placeholder="username"
-            />
-          </Field>
-
-          <Field label="Password" error={errors.password?.message}>
-            <input
-              {...register('password')}
-              type="password"
-              autoComplete="current-password"
-              className={inputCls}
-              placeholder="password"
+              placeholder="123456"
             />
           </Field>
 
@@ -103,21 +86,13 @@ export function LoginPage() {
               'disabled:opacity-50 disabled:cursor-not-allowed',
             )}
           >
-            {isSubmitting ? 'Signing in…' : 'Sign in'}
+            {isSubmitting ? 'Verifying…' : 'Verify'}
           </button>
 
           {apiError && (
             <p className="text-[11px] text-center text-[var(--color-danger)]">{apiError}</p>
           )}
         </form>
-
-        <p className="text-center text-xs text-[var(--color-text-dim)]">
-          In case you don't have account {' '}
-          <Link to="/register" className="text-[var(--color-primary)] hover:underline">
-            register
-          </Link>
-          {' '}now!
-        </p>
       </div>
     </div>
   )

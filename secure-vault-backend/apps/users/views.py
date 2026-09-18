@@ -14,6 +14,15 @@ from util.cryptography import sha256, CustomArgon2PasswordHasher
 from util.authentication import create_access_token, create_refresh_token
 from util.authorization import IsAdmin, IsTeamLead
 from django.utils import timezone
+from util.mfa import (
+    build_totp_provisioning_uri,
+    create_mfa_challenge,
+    delete_mfa_challenge,
+    encode_totp_secret,
+    generate_totp_secret_bytes,
+    get_mfa_challenge,
+    verify_totp_code,
+)
 
 def user_info(user):
     return {
@@ -29,7 +38,6 @@ def user_info(user):
 
 def set_auth_cookies(response, access_token, refresh_token):
     """Set access and refresh tokens as HttpOnly, Secure, SameSite cookies."""
-    from datetime import datetime, timedelta, timezone as dt_timezone
     from util.authentication import get_refresh_token_duration_minutes, get_access_token_duration_minutes
     
     # Calculate expiry times
@@ -61,6 +69,36 @@ def set_auth_cookies(response, access_token, refresh_token):
 def roles():
     return {role for role, role_capitalized in UserRole.choices}
 
+
+def issue_user_session(user):
+    refresh_token_payload = create_refresh_token()
+    existing_token = RefreshToken.objects.filter(user=user).first()
+
+    if existing_token:
+        token_serializer = RefreshTokenSerializer(
+            instance=existing_token,
+            data=refresh_token_payload,
+            partial=True,
+        )
+    else:
+        token_serializer = RefreshTokenSerializer(data=refresh_token_payload)
+
+    token_serializer.is_valid(raise_exception=True)
+
+    if existing_token:
+        token_serializer.save()
+    else:
+        token_serializer.save(user=user)
+
+    access_token = create_access_token(user.id)
+    refresh_token = refresh_token_payload.get("token")
+
+    response = Response(
+        {"user": user_info(user)},
+        status=status.HTTP_200_OK,
+    )
+    return set_auth_cookies(response, access_token, refresh_token)
+
 class UsersView(APIView):
     permission_classes = [AllowAny]
 
@@ -74,20 +112,33 @@ class UsersView(APIView):
     def post(self, request):
         serializer = UserSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        user = serializer.save()
-        refresh_token_payload = create_refresh_token()
-        token_serializer = RefreshTokenSerializer(data=refresh_token_payload)
-        token_serializer.is_valid(raise_exception=True)
-        token_serializer.save(user=user)
-        
-        access_token = create_access_token(user.id)
-        refresh_token = refresh_token_payload.get("token")
-        
+        user = serializer.save(mfa_setup_pending=True)
+
+        secret_bytes = generate_totp_secret_bytes()
+        secret_base32 = encode_totp_secret(secret_bytes)
+        challenge_id = create_mfa_challenge(
+            {
+                "type": "registration",
+                "user_id": str(user.id),
+                "secret_base32": secret_base32,
+            }
+        )
+
+        provisioning_uri = build_totp_provisioning_uri(secret_bytes, user.username)
         response = Response(
-            {"user": user_info(user)},
+            {
+                "user": user_info(user),
+                "mfa": {
+                    "challenge_id": challenge_id,
+                    "secret": secret_base32,
+                    "provisioning_uri": provisioning_uri,
+                    "issuer": "SecureVault",
+                    "account_name": user.username,
+                },
+            },
             status=status.HTTP_201_CREATED,
         )
-        return set_auth_cookies(response, access_token, refresh_token)
+        return response
 
     def get(self, request):
         role = request.query_params.get("role")
@@ -141,28 +192,104 @@ class UserLoginView(APIView):
                     {"details": "Invalid username or password."},
                     status=status.HTTP_401_UNAUTHORIZED,
                 )
-            refresh_token_payload = create_refresh_token()
-            existing_token = RefreshToken.objects.filter(user=user).first()
 
-            if existing_token:
-                token_serializer = RefreshTokenSerializer(instance=existing_token, data=refresh_token_payload, partial=True)
-            else:
-                token_serializer = RefreshTokenSerializer(data=refresh_token_payload)
+            if user.mfa_setup_pending:
+                return Response(
+                    {"detail": "MFA setup is not complete. Finish registration verification first."},
+                    status=status.HTTP_403_FORBIDDEN,
+                )
 
-            token_serializer.is_valid(raise_exception=True)
-            if existing_token:
-                token_serializer.save()
+            if user.mfa_secret:
+                challenge_id = create_mfa_challenge(
+                    {
+                        "type": "login",
+                        "user_id": str(user.id),
+                    }
+                )
+
+                return Response(
+                    {
+                        "mfa_required": True,
+                        "challenge_id": challenge_id,
+                    },
+                    status=status.HTTP_200_OK,
+                )
+
+                return issue_user_session(user)
             else:
-                token_serializer.save(user=user)
-                
-            access_token = create_access_token(user.id)
-            refresh_token = refresh_token_payload.get("token")
-            
-            response = Response(
-                {"user": user_info(user)},
-                status=status.HTTP_200_OK,
+                return Response(
+                    {"detail": "MFA setup is not complete. Finish registration verification first."},
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+
+
+class MFAVerifyView(APIView):
+    authentication_classes = []
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        challenge_id = str(request.data.get("challenge_id") or "").strip()
+        code = str(request.data.get("code") or "").strip()
+        if not challenge_id or not code:
+            return Response(
+                {"detail": "challenge_id and code are required."},
+                status=status.HTTP_400_BAD_REQUEST,
             )
-            return set_auth_cookies(response, access_token, refresh_token)
+
+        challenge = get_mfa_challenge(challenge_id)
+        if not challenge:
+            return Response(
+                {"detail": "MFA challenge expired or not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        challenge_type = challenge.get("type")
+        user_id = challenge.get("user_id")
+        if not user_id:
+            delete_mfa_challenge(challenge_id)
+            return Response(
+                {"detail": "Invalid MFA challenge."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        user = get_object_or_404(User, id=user_id)
+
+        if challenge_type == "registration":
+            secret_base32 = challenge.get("secret_base32")
+            if not secret_base32:
+                delete_mfa_challenge(challenge_id)
+                return Response(
+                    {"detail": "Invalid MFA challenge."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            if not verify_totp_code(secret_base32, code):
+                return Response(
+                    {"detail": "Invalid verification code."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            user.mfa_secret = secret_base32
+            user.mfa_setup_pending = False
+            user.save(update_fields=["mfa_secret", "mfa_setup_pending"])
+            delete_mfa_challenge(challenge_id)
+            return issue_user_session(user)
+
+        if challenge_type == "login":
+            if not verify_totp_code(user.mfa_secret, code):
+                return Response(
+                    {"detail": "Invalid verification code."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            delete_mfa_challenge(challenge_id)
+            return issue_user_session(user)
+
+        delete_mfa_challenge(challenge_id)
+        return Response(
+            {"detail": "Invalid MFA challenge."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
 class SessionRefreshView(APIView):
     authentication_classes = []
     permission_classes = [AllowAny]

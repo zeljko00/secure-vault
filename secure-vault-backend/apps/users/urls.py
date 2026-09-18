@@ -12,13 +12,15 @@ from apps.users.views import (
     UserRoleView,
     UserTeamView,
     UserDeactivationView,
-    SessionRefreshView
+    SessionRefreshView,
+    MFAVerifyView,
 )
 
 urlpatterns = [
     path("", UsersView.as_view(), name="users"),
     path("refresh/", SessionRefreshView.as_view(), name="session-refresh"),
     path("login/", UserLoginView.as_view(), name="user-login"),
+    path("mfa/", MFAVerifyView.as_view(), name="mfa-verify"),
     path("logout/", UserLogoutView.as_view(), name="user-logout"),
     path("teams/", TeamsView.as_view(), name="users-teams"),
     path("teams/<uuid:id>/", TeamView.as_view(), name="users-team"),

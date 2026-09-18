@@ -2,6 +2,7 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { HomePage } from '@/pages/HomePage'
 import { ControlPanelPage } from '@/pages/ControlPanelPage'
 import { LoginPage } from '@/pages/LoginPage'
+import { MFAPage } from '@/pages/MFAPage'
 import { RegisterPage } from '@/pages/RegisterPage'
 import { useAuthStore } from '@/stores/authStore'
 
@@ -38,6 +39,10 @@ export default function App() {
         <Route
           path="/login"
           element={user ? <Navigate to={getLandingRoute(user.role)} replace /> : <LoginPage />}
+        />
+        <Route
+          path="/login/mfa"
+          element={user ? <Navigate to={getLandingRoute(user.role)} replace /> : <MFAPage />}
         />
         <Route
           path="/register"
