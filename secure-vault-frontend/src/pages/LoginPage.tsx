@@ -19,7 +19,7 @@ type FormValues = z.infer<typeof schema>
 
 export function LoginPage() {
   const navigate = useNavigate()
-  const { setUser, setMfaPending, setMfaChallengeId } = useAuthStore()
+  const { authNotice, setAuthNotice, setUser, setMfaPending, setMfaChallengeId } = useAuthStore()
   const [apiError, setApiError] = useState<string | null>(null)
 
   const {
@@ -62,6 +62,19 @@ export function LoginPage() {
   return (
     <div className="min-h-screen flex items-center justify-center px-4">
       <div className="w-full max-w-sm glass p-8 flex flex-col gap-6">
+        {authNotice && (
+          <div className="rounded-lg border border-[var(--color-primary)]/30 bg-[var(--color-primary)]/10 px-4 py-3 text-sm text-[var(--color-text)]">
+            <p>{authNotice}</p>
+            <button
+              type="button"
+              onClick={() => setAuthNotice(null)}
+              className="mt-2 text-xs text-[var(--color-primary)] hover:underline"
+            >
+              Dismiss
+            </button>
+          </div>
+        )}
+
         {/* Header */}
         <div className="text-center flex flex-col items-center gap-3">
           <span className="text-[var(--color-primary)] drop-shadow-[0_0_12px_var(--color-primary)]">

@@ -72,9 +72,12 @@ api.interceptors.response.use(
             return api(originalRequest)
           } catch {
             useAuthStore.getState().logout()
+            useAuthStore.getState().setAuthNotice('Your session expired. Please sign in again.')
           }
         } else {
           useAuthStore.getState().logout()
+          useAuthStore.getState().setAuthNotice('Authentication or authorization failed!')
+
         }
 
         if (typeof window !== 'undefined' && !['/login', '/register'].includes(window.location.pathname)) {
