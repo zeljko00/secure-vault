@@ -8,7 +8,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
 from redis.exceptions import RedisError
-from rest_framework.permissions import AllowAny
+from django.db import connection
 
 
 from apps.user_secrets.models import Secret, SecretType, SharedSecret, SecretAccessLog, HoneypotSecretAccessLog
@@ -24,6 +24,7 @@ from apps.settings.models import Setting
 from util.redis_client import get_redis_client
 from util.request import get_client_ip
 from django.contrib.auth.hashers import Argon2PasswordHasher
+from util.authentication import UserBasicAuthentication
 
 from util.authorization import CanManageSecrets, IsAdmin, CanManageSecret, CanManageSharedSecret, CanManageSharedSecrets, CanManageReceivedSecrets
 
@@ -154,23 +155,38 @@ class SecretView(APIView):
 
 
 class PublicSecretView(APIView):
-    authentication_classes = []
-    permission_classes = [AllowAny]
+    authentication_classes = [UserBasicAuthentication]
+    permission_classes = [IsAuthenticated]
     
     def get(self, request, user_id, secret_id):
         # Check if endpoint is enabled
+        print("==========================================")
+        print('enabled')
         enabled = Setting.objects.filter(key="hidden_endpoint_enabled").first()
         if not enabled or enabled.value != "true":
             return Response(status=status.HTTP_404_NOT_FOUND)
+        
+        user = request.user
+        
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT id FROM user_secrets_secret WHERE owner_id = '"
+                + user_id +"' AND id = '" + secret_id + "'",
+            )
+            row = cursor.fetchone()
 
-        secret = get_object_or_404(Secret, id=secret_id)
-        user = get_object_or_404(User, id=user_id)
+        if not row:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+        print("==========================================")
+        print(secret_id)
+        secret = get_object_or_404(Secret, id=row[0])
         
         # Log honeypot access if marked
         is_honeypot(secret, user, request)
         
         serializer = SecretSerializer(secret)
         return Response(serializer.data, status=status.HTTP_200_OK)
+
 class HoneypotView(APIView):
     permission_classes = [IsAuthenticated, IsAdmin]
 

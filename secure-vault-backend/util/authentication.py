@@ -1,13 +1,16 @@
 import jwt
 import uuid
 import secrets
+import base64
+import binascii
 
 from datetime import datetime, timedelta, timezone
 from django.conf import settings
-from rest_framework.authentication import BaseAuthentication
+from rest_framework.authentication import BaseAuthentication, get_authorization_header
 from rest_framework.exceptions import AuthenticationFailed
 from apps.settings.models import Setting
 from apps.users.models import User, UserDeactivationLog
+from util.cryptography import CustomArgon2PasswordHasher
 
 DEFAULT_ACCESS_TOKEN_DURATION_MINUTES = 1
 DEFAULT_REFRESH_TOKEN_DURATION_MINUTES = 60 * 24 * 7  # 7 days
@@ -127,3 +130,38 @@ class CustomJWTAuthentication(BaseAuthentication):
             )
 
         return (user, token)
+
+
+class UserBasicAuthentication(BaseAuthentication):
+
+    def authenticate(self, request):
+        auth = get_authorization_header(request).split()
+        if not auth:
+            return None
+
+        if auth[0].lower() != b"basic":
+            return None
+
+        if len(auth) != 2:
+            raise AuthenticationFailed("Invalid basic authentication header")
+
+        try:
+            decoded = base64.b64decode(auth[1]).decode("utf-8")
+        except (binascii.Error, UnicodeDecodeError) as exc:
+            raise AuthenticationFailed("Invalid basic authentication header") from exc
+
+        username, separator, password = decoded.partition(":")
+        if not separator:
+            raise AuthenticationFailed("Invalid basic authentication header")
+
+        user = User.objects.filter(username=username).first()
+        if not user or UserDeactivationLog.objects.filter(user=user).exists():
+            raise AuthenticationFailed("Invalid username or password")
+
+        hasher = CustomArgon2PasswordHasher()
+        try:
+            hasher.verify(password, user.password_hash)
+        except Exception as exc:
+            raise AuthenticationFailed("Invalid username or password") from exc
+
+        return (user, None)
