@@ -62,18 +62,6 @@ export function LoginPage() {
   return (
     <div className="min-h-screen flex items-center justify-center px-4">
       <div className="w-full max-w-sm glass p-8 flex flex-col gap-6">
-        {authNotice && (
-          <div className="rounded-lg border border-[var(--color-primary)]/30 bg-[var(--color-primary)]/10 px-4 py-3 text-sm text-[var(--color-text)]">
-            <p>{authNotice}</p>
-            <button
-              type="button"
-              onClick={() => setAuthNotice(null)}
-              className="mt-2 text-xs text-[var(--color-primary)] hover:underline"
-            >
-              Dismiss
-            </button>
-          </div>
-        )}
 
         {/* Header */}
         <div className="text-center flex flex-col items-center gap-3">
@@ -131,6 +119,19 @@ export function LoginPage() {
           </Link>
           {' '}now!
         </p>
+
+        {authNotice && (
+          <div className="rounded-lg border border-[var(--color-primary)]/30 bg-[var(--color-primary)]/10 px-4 py-3 text-sm text-[var(--color-text)]">
+            <p>{authNotice}</p>
+            <button
+              type="button"
+              onClick={() => setAuthNotice(null)}
+              className="mt-2 text-xs text-[var(--color-primary)] hover:underline"
+            >
+              Dismiss
+            </button>
+          </div>
+        )}
       </div>
     </div>
   )
