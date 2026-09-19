@@ -142,6 +142,7 @@ class SecretView(APIView):
 
     def put(self, request, id):
         secret = get_object_or_404(Secret, id=id)
+        self.check_object_permissions(request, secret)
         serializer = SecretSerializer(secret, data=request.data, partial=True)
         if serializer.is_valid():
             serializer.save()
@@ -150,6 +151,7 @@ class SecretView(APIView):
     
     def delete(self, request, id):
         secret = get_object_or_404(Secret, id=id)
+        self.check_object_permissions(request, secret)
         secret.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
@@ -160,8 +162,6 @@ class PublicSecretView(APIView):
     
     def get(self, request, user_id, secret_id):
         # Check if endpoint is enabled
-        print("==========================================")
-        print('enabled')
         enabled = Setting.objects.filter(key="hidden_endpoint_enabled").first()
         if not enabled or enabled.value != "true":
             return Response(status=status.HTTP_404_NOT_FOUND)
@@ -177,8 +177,6 @@ class PublicSecretView(APIView):
 
         if not row:
             return Response(status=status.HTTP_404_NOT_FOUND)
-        print("==========================================")
-        print(secret_id)
         secret = get_object_or_404(Secret, id=row[0])
         
         # Log honeypot access if marked
@@ -245,10 +243,10 @@ class ShareSecretView(APIView):
             )
             
     def get(self, request, id):
-        shared = get_object_or_404(Secret, id=id)
-        self.check_object_permissions(request, shared)
+        secret = get_object_or_404(Secret, id=id)
+        self.check_object_permissions(request, secret)
         
-        shared_instances = SharedSecret.objects.filter(secret=shared, sharing_revoked=False).filter(
+        shared_instances = SharedSecret.objects.filter(secret=secret, sharing_revoked=False).filter(
             Q(sharing_expires_at__isnull=True) | Q(sharing_expires_at__gt=timezone.now())
         )
         
@@ -362,6 +360,7 @@ class SharedSecretView(APIView):
 
     def delete(self, request, id):
         shared = get_object_or_404(SharedSecret, id=id)
+        self.check_object_permissions(request, shared)
         shared.sharing_revoked = True
         shared.save()
         get_redis_client().delete(str(shared.id))
