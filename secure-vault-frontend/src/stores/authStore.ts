@@ -6,12 +6,21 @@ export const AUTH_USER_STORAGE_KEY = '_sv_auth_user'
 export const AUTH_DEVICE_ID_STORAGE_KEY = '_sv_device_id'
 export const AUTH_NOTICE_STORAGE_KEY = '_sv_auth_notice'
 
+const AUTH_DB_NAME = 'secure-vault-auth'
+const AUTH_STORE_NAME = 'entries'
+
 type AuthNotice = {
   message: string
 }
 
+type AuthEntry = {
+  key: string
+  value: string
+}
+
 interface AuthState {
   user: User | null
+  isHydrated: boolean
   /** In-memory AES-GCM key derived from master password — never persisted */
   masterKey: CryptoKey | null
   /** In-memory RSA private key — never persisted */
@@ -20,20 +29,73 @@ interface AuthState {
   mfaChallengeId: string | null
   authNotice: string | null
 
-  setUser: (user: User | null) => void
+  setUser: (user: User | null) => Promise<void>
   setMasterKey: (key: CryptoKey | null) => void
   setPrivateKey: (key: CryptoKey | null) => void
   setMfaPending: (pending: boolean) => void
   setMfaChallengeId: (challengeId: string | null) => void
   setAuthNotice: (message: string | null) => void
-  logout: () => void
+  logout: () => Promise<void>
 }
 
-// Restore user from localStorage on mount
-function loadPersistedUser(): User | null {
+let cachedDeviceId: string | null = null
+let deviceIdPromise: Promise<string> | null = null
+
+function openAuthDB(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(AUTH_DB_NAME, 1)
+
+    request.onupgradeneeded = () => {
+      request.result.createObjectStore(AUTH_STORE_NAME, { keyPath: 'key' })
+    }
+
+    request.onsuccess = () => resolve(request.result)
+    request.onerror = () => reject(request.error)
+  })
+}
+
+async function readAuthEntry(key: string): Promise<string | null> {
+  const db = await openAuthDB()
+
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(AUTH_STORE_NAME, 'readonly')
+    const request = tx.objectStore(AUTH_STORE_NAME).get(key)
+
+    request.onsuccess = () => {
+      const entry = request.result as AuthEntry | undefined
+      resolve(entry?.value ?? null)
+    }
+
+    request.onerror = () => reject(request.error)
+  })
+}
+
+async function writeAuthEntry(key: string, value: string): Promise<void> {
+  const db = await openAuthDB()
+
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(AUTH_STORE_NAME, 'readwrite')
+    tx.objectStore(AUTH_STORE_NAME).put({ key, value } as AuthEntry)
+    tx.oncomplete = () => resolve()
+    tx.onerror = () => reject(tx.error)
+  })
+}
+
+async function deleteAuthEntry(key: string): Promise<void> {
+  const db = await openAuthDB()
+
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(AUTH_STORE_NAME, 'readwrite')
+    tx.objectStore(AUTH_STORE_NAME).delete(key)
+    tx.oncomplete = () => resolve()
+    tx.onerror = () => reject(tx.error)
+  })
+}
+
+async function loadPersistedUser(): Promise<User | null> {
   try {
-    const stored = localStorage.getItem(AUTH_USER_STORAGE_KEY)
-    return stored ? JSON.parse(stored) : null
+    const stored = await readAuthEntry(AUTH_USER_STORAGE_KEY)
+    return stored ? JSON.parse(stored) as User : null
   } catch {
     return null
   }
@@ -53,26 +115,59 @@ function loadPersistedAuthNotice(): string | null {
   }
 }
 
-export function loadPersistedDeviceId(): string {
-  try {
-    const stored = localStorage.getItem(AUTH_DEVICE_ID_STORAGE_KEY)
-    if (stored) {
-      const parsed = JSON.parse(stored) as { deviceId?: unknown }
-      if (typeof parsed.deviceId === 'string' && parsed.deviceId) {
-        return parsed.deviceId
-      }
-    }
-
-    const generated = generateDeviceId()
-    localStorage.setItem(AUTH_DEVICE_ID_STORAGE_KEY, JSON.stringify({ deviceId: generated }))
-    return generated
-  } catch {
-    return "unknown"
+export async function loadPersistedDeviceId(): Promise<string> {
+  if (cachedDeviceId) {
+    return cachedDeviceId
   }
+
+  if (deviceIdPromise) {
+    return deviceIdPromise
+  }
+
+  deviceIdPromise = (async () => {
+    try {
+      const stored = await readAuthEntry(AUTH_DEVICE_ID_STORAGE_KEY)
+      if (stored) {
+        const parsed = JSON.parse(stored) as { deviceId?: unknown }
+        if (typeof parsed.deviceId === 'string' && parsed.deviceId) {
+          cachedDeviceId = parsed.deviceId
+          return parsed.deviceId
+        }
+      }
+
+      const generated = generateDeviceId()
+      cachedDeviceId = generated
+      await writeAuthEntry(AUTH_DEVICE_ID_STORAGE_KEY, JSON.stringify({ deviceId: generated }))
+      return generated
+    } catch {
+      const fallback = cachedDeviceId ?? generateDeviceId()
+      cachedDeviceId = fallback
+      return fallback
+    } finally {
+      deviceIdPromise = null
+    }
+  })()
+
+  return deviceIdPromise
+}
+
+async function persistUser(user: User | null): Promise<void> {
+  if (user) {
+    await writeAuthEntry(AUTH_USER_STORAGE_KEY, JSON.stringify(user))
+    return
+  }
+
+  await deleteAuthEntry(AUTH_USER_STORAGE_KEY)
+}
+
+export async function hydrateAuthStore(): Promise<void> {
+  const [user] = await Promise.all([loadPersistedUser(), loadPersistedDeviceId()])
+  useAuthStore.setState({ user, isHydrated: true })
 }
 
 export const useAuthStore = create<AuthState>((set) => ({
-  user: loadPersistedUser(),
+  user: null,
+  isHydrated: false,
   masterKey: null,
   privateKey: null,
   mfaPending: false,
@@ -80,14 +175,10 @@ export const useAuthStore = create<AuthState>((set) => ({
   authNotice: loadPersistedAuthNotice(),
 
   setUser: (user) => {
-    if (user) {
-      localStorage.setItem(AUTH_USER_STORAGE_KEY, JSON.stringify(user))
-    } else {
-      localStorage.removeItem(AUTH_USER_STORAGE_KEY)
-    }
     set({ user })
+    return persistUser(user).catch(() => undefined)
   },
-  setMasterKey:  (masterKey)  => set({ masterKey }),
+  setMasterKey: (masterKey) => set({ masterKey }),
   setPrivateKey: (privateKey) => set({ privateKey }),
   setMfaPending: (mfaPending) => set({ mfaPending }),
   setMfaChallengeId: (mfaChallengeId) => set({ mfaChallengeId }),
@@ -100,11 +191,8 @@ export const useAuthStore = create<AuthState>((set) => ({
 
     set({ authNotice: message })
   },
-  
 
   logout: () => {
-    localStorage.removeItem(AUTH_USER_STORAGE_KEY)
-    // it is not needed to delete device id on logout since it identifies the device, not the user.
     set({
       user: null,
       masterKey: null,
@@ -113,5 +201,7 @@ export const useAuthStore = create<AuthState>((set) => ({
       mfaChallengeId: null,
       authNotice: loadPersistedAuthNotice(),
     })
+
+    return deleteAuthEntry(AUTH_USER_STORAGE_KEY).catch(() => undefined)
   },
 }))

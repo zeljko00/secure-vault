@@ -1,10 +1,11 @@
+import { useEffect } from 'react'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { HomePage } from '@/pages/HomePage'
 import { ControlPanelPage } from '@/pages/ControlPanelPage'
 import { LoginPage } from '@/pages/LoginPage'
 import { MFAPage } from '@/pages/MFAPage'
 import { RegisterPage } from '@/pages/RegisterPage'
-import { useAuthStore } from '@/stores/authStore'
+import { hydrateAuthStore, useAuthStore } from '@/stores/authStore'
 
 function getLandingRoute(role?: string) {
   return role === 'admin' ? '/admin' : '/'
@@ -12,6 +13,19 @@ function getLandingRoute(role?: string) {
 
 export default function App() {
   const user = useAuthStore((state) => state.user)
+  const isHydrated = useAuthStore((state) => state.isHydrated)
+
+  useEffect(() => {
+    void hydrateAuthStore()
+  }, [])
+
+  if (!isHydrated) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-[var(--color-bg)] text-[var(--color-text-muted)]">
+        Loading SecureVault…
+      </div>
+    )
+  }
 
   return (
     <BrowserRouter>

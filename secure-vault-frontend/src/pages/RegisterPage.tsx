@@ -153,8 +153,10 @@ export function RegisterPage() {
         setMasterPassword(null)
         setPendingMasterPassword(null)
         if (verifiedUser) {
-          setUser(verifiedUser)
-          navigate(verifiedUser.role === 'admin' ? '/admin' : '/', { replace: true })
+          void (async () => {
+            await setUser(verifiedUser)
+            navigate(verifiedUser.role === 'admin' ? '/admin' : '/', { replace: true })
+          })()
         }
       }
     }, 250)
@@ -202,7 +204,7 @@ export function RegisterPage() {
       if (pendingMasterPassword) {
         setMasterPassword(pendingMasterPassword)
       } else {
-        setUser(response.data.user)
+        await setUser(response.data.user)
         navigate(response.data.user.role === 'admin' ? '/admin' : '/', { replace: true })
       }
     } catch (err: unknown) {

@@ -42,7 +42,7 @@ export function LoginPage() {
       }
 
       if (res.data.user) {
-        setUser(res.data.user)
+        await setUser(res.data.user)
         setMfaPending(false)
         setMfaChallengeId(null)
         navigate(res.data.user.role === 'admin' ? '/admin' : '/', { replace: true })

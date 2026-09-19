@@ -41,7 +41,7 @@ export function MFAPage() {
         code: data.code,
       })
 
-      setUser(response.data.user)
+      await setUser(response.data.user)
       setMfaPending(false)
       setMfaChallengeId(null)
       navigate(response.data.user.role === 'admin' ? '/admin' : '/', { replace: true })

@@ -23,8 +23,8 @@ export const api = axios.create({
   headers: { 'Content-Type': 'application/json' },
 })
 
-function attachDeviceId(config: InternalAxiosRequestConfig): InternalAxiosRequestConfig {
-  const deviceId = loadPersistedDeviceId() // Load device ID from localStorage
+async function attachDeviceId(config: InternalAxiosRequestConfig): Promise<InternalAxiosRequestConfig> {
+  const deviceId = await loadPersistedDeviceId() // Load device ID from IndexedDB
 
   if (deviceId) {
     const headers = AxiosHeaders.from(config.headers)
@@ -71,11 +71,11 @@ api.interceptors.response.use(
             // Retry original request (cookies are already updated)
             return api(originalRequest)
           } catch {
-            useAuthStore.getState().logout()
+            await useAuthStore.getState().logout()
             useAuthStore.getState().setAuthNotice('Your session expired. Please sign in again.')
           }
         } else {
-          useAuthStore.getState().logout()
+          await useAuthStore.getState().logout()
           useAuthStore.getState().setAuthNotice('Authentication or authorization failed!')
 
         }
