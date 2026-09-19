@@ -62,11 +62,8 @@ api.interceptors.response.use(
           ;(originalRequest as { _retry?: boolean })._retry = true
           console.log('Attempting to refresh access token...')
           try {
-            // Refresh endpoint will use refresh_token cookie automatically
-            await axios.post('/api/users/refresh/', {}, {
-              withCredentials: true,
-              headers: { 'Content-Type': 'application/json' },
-            })
+            // Refresh endpoint will use refresh_token cookie automatically, and api() adds X-Device-Id.
+            await api.post('/users/refresh/', {})
 
             // Retry original request (cookies are already updated)
             return api(originalRequest)
