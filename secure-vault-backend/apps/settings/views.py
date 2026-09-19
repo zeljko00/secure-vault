@@ -43,8 +43,14 @@ class SettingView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        setting, _ = Setting.objects.update_or_create(
-            key=key,
-            defaults={"value": str(value)},
-        )
+        # Only update existing keys, reject creation of new keys
+        setting = Setting.objects.filter(key=key).first()
+        if not setting:
+            return Response(
+                {"detail": "Setting key not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        
+        setting.value = str(value)
+        setting.save()
         return Response({setting.key: setting.value}, status=status.HTTP_200_OK)
