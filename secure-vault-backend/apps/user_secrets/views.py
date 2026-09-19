@@ -26,7 +26,7 @@ from util.request import get_client_ip
 from django.contrib.auth.hashers import Argon2PasswordHasher
 from util.authentication import UserBasicAuthentication
 
-from util.authorization import CanManageSecrets, IsAdmin, CanManageSecret, CanManageSharedSecret, CanManageSharedSecrets, CanManageReceivedSecrets
+from util.authorization import CanManageSecrets, IsAdmin, CanManageSecret, CanShareSecret, CanManageSharedSecret, CanManageSharedSecrets, CanManageReceivedSecrets
 
 def is_honeypot(secret, user: User, request) -> bool:
     ip_address = get_client_ip(request)
@@ -204,7 +204,7 @@ class HoneypotView(APIView):
         return Response(SecretSerializer(secret).data, status=status.HTTP_201_CREATED)
     
 class ShareSecretView(APIView):
-    permission_classes = [IsAuthenticated, CanManageSharedSecret]
+    permission_classes = [IsAuthenticated, CanShareSecret]
 
     def post(self, request, id):
         secret = get_object_or_404(Secret, id=id)
@@ -243,7 +243,28 @@ class ShareSecretView(APIView):
                 {"detail": "Failed to store shared secret."},
                 status=status.HTTP_503_SERVICE_UNAVAILABLE,
             )
-
+            
+    def get(self, request, id):
+        shared = get_object_or_404(Secret, id=id)
+        self.check_object_permissions(request, shared)
+        
+        shared_instances = SharedSecret.objects.filter(secret=shared, sharing_revoked=False).filter(
+            Q(sharing_expires_at__isnull=True) | Q(sharing_expires_at__gt=timezone.now())
+        )
+        
+        return Response(
+            {
+                "shared_instances": [
+                    {
+                        "id": instance.id,
+                        "recipient_id": instance.sharing_with.id,
+                        "recipient_pub_key": instance.sharing_with.pub_key,
+                    }
+                    for instance in shared_instances
+                ],
+            },
+            status=status.HTTP_200_OK,
+        )
 
 class SharedSecretView(APIView):
     permission_classes = [IsAuthenticated, CanManageSharedSecret]
@@ -280,7 +301,64 @@ class SharedSecretView(APIView):
         if isinstance(payload, bytes):
             payload = payload.decode("utf-8")
 
-        return Response({**SharedSecretSerializer(shared).data, "cipher_text": payload}, status=status.HTTP_200_OK)
+        response_data = dict(SharedSecretSerializer(shared).data)
+        response_data["cipher_text"] = payload
+        return Response(response_data, status=status.HTTP_200_OK)
+
+    def put(self, request, id):
+        shared = get_object_or_404(SharedSecret, id=id)
+        self.check_object_permissions(request, shared)
+
+        payload = request.data.get("cipher_text")
+        if not payload:
+            return Response(
+                {"detail": "cipher_text is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if shared.sharing_revoked:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+
+        if shared.sharing_expires_at and shared.sharing_expires_at <= timezone.now():
+            return Response(
+                {"detail": "Shared secret expired or unavailable."},
+                status=status.HTTP_410_GONE,
+            )
+
+        redis_client = get_redis_client()
+
+        try:
+            ttl_seconds = (
+                int((shared.sharing_expires_at - timezone.now()).total_seconds())
+                if shared.sharing_expires_at
+                else None
+            )
+
+            if ttl_seconds is not None and ttl_seconds <= 0:
+                return Response(
+                    {"detail": "Shared secret expired or unavailable."},
+                    status=status.HTTP_410_GONE,
+                )
+
+            if ttl_seconds:
+                updated = redis_client.set(str(shared.id), payload, ex=ttl_seconds, xx=True)
+            else:
+                updated = redis_client.set(str(shared.id), payload, xx=True)
+
+            if not updated:
+                return Response(
+                    {"detail": "Shared secret expired or unavailable."},
+                    status=status.HTTP_410_GONE,
+                )
+
+            response_data = dict(SharedSecretSerializer(shared).data)
+            response_data["cipher_text"] = payload
+            return Response(response_data, status=status.HTTP_200_OK)
+        except (RedisError, ValueError):
+            return Response(
+                {"detail": "Failed to update shared secret."},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
 
     def delete(self, request, id):
         shared = get_object_or_404(SharedSecret, id=id)

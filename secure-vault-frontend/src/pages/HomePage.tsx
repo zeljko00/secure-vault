@@ -20,7 +20,6 @@ import {
 import { useAuthStore } from '@/stores/authStore'
 import { base64ToUint8Array, cn } from '@/lib/utils'
 import type { OwnedSharedSecret, ReceivedSharedSecret, Secret, SecretType, User } from '@/types'
-import { log } from '@/lib/debug'
 
 const schema = z.object({
   label: z.string().min(1, 'Label is required'),
@@ -43,6 +42,15 @@ type FormValues = z.infer<typeof schema>
 type ShareScope = 'member' | 'team'
 type SharedSecretPayloadResponse = {
   cipher_text: string
+}
+type SharedSecretInstancesResponse = {
+  id: string
+  recipient_id: string
+  recipient_pub_key: string
+}
+
+type SharedSecretRecipientsPayloadResponse = {
+  shared_instances: SharedSecretInstancesResponse[]
 }
 
 function toDateTimeLocalValue(date: Date): string {
@@ -286,6 +294,34 @@ export function HomePage() {
     })
     setEditingSecretId(null)
     reset({ label: '', type: data.type, value: '' })
+
+    if (user?.role === 'tl') {
+      const recipientsResponse = await api.get<SharedSecretRecipientsPayloadResponse>(`/secrets/${secretId}/share`, {
+      })
+
+      const instances = Array.isArray(recipientsResponse.data.shared_instances)
+        ? recipientsResponse.data.shared_instances
+        : []
+
+      if (instances.length > 0) {
+        const results = await Promise.allSettled(
+          instances.map(async (instance) => {
+            const recipientPublicKey = await importPublicKeyFromPEM(instance.recipient_pub_key)
+            const encryptedPayload = await encryptWithPublicKey(recipientPublicKey, data.value)
+
+            return api.put(
+              `/secrets/shared/${instance.id}`,
+              { cipher_text: encryptedPayload }
+            )
+          }),
+        )
+
+        const failedCount = results.filter((result) => result.status === 'rejected').length
+        if (failedCount > 0) {
+          throw new Error(`Secret updated, but failed to refresh ${failedCount} shared instance(s).`)
+        }
+      }
+    }
   }
 
   const onSubmit = async (data: FormValues) => {
@@ -310,6 +346,8 @@ export function HomePage() {
       if (axios.isAxiosError(err) && err.response) {
         const detail = err.response.data?.detail
         setApiError(detail ?? (editingSecretId ? 'Failed to update secret' : 'Failed to add secret'))
+      } else if (err instanceof Error) {
+        setApiError(err.message)
       } else {
         setApiError('Network error — please try again')
       }
