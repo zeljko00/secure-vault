@@ -98,7 +98,7 @@ REST_FRAMEWORK = {
 }
 
 # Used to sign JWTs
-JWT_SECRET_KEY = os.environ["JWT_SECRET_KEY"]
+JWT_SECRET_KEY = os.getenv('JWT_SECRET_KEY', 'secret')
 
 PASSWORD_HASHERS = [
     "django.contrib.auth.hashers.CustomArgon2PasswordHasher",
