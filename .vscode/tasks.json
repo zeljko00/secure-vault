@@ -7,8 +7,6 @@
       "command": "docker",
       "args": [
         "compose",
-        "--profile",
-        "dev",
         "-f",
         "docker-compose.yml",
         "-f",
@@ -28,7 +26,7 @@
       }
     },
     {
-      "label": "Docker Compose: Dev Down",
+      "label": "Docker Compose: Down",
       "type": "shell",
       "command": "docker",
       "args": [
@@ -36,7 +34,7 @@
         "--profile",
         "migration",
         "--profile",
-        "dev",
+        "monitoring",
         "-f",
         "docker-compose.yml",
         "-f",
@@ -55,13 +53,37 @@
       }
     },
     {
-      "label": "Docker Compose: Dev Up (with migration)",
+      "label": "Docker Compose: Dev Up (with monitoring)",
       "type": "shell",
       "command": "docker",
       "args": [
         "compose",
         "--profile",
-        "dev",
+        "monitoring",
+        "-f",
+        "docker-compose.yml",
+        "-f",
+        "docker-compose.dev.yml",
+        "up",
+        "--remove-orphans"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "isBackground": true,
+      "group": "build",
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "clear": true
+      }
+    },
+    {
+      "label": "Docker Compose: Dev Up (with migration)",
+      "type": "shell",
+      "command": "docker",
+      "args": [
+        "compose",
         "--profile",
         "migration",
         "-f",
