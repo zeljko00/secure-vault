@@ -37,6 +37,7 @@ export function LoginPage() {
       if (res.data.mfa_required && res.data.challenge_id) {
         setMfaPending(true)
         setMfaChallengeId(res.data.challenge_id)
+        setAuthNotice(null)
         navigate('/login/mfa', { replace: true })
         return
       }
