@@ -9,6 +9,7 @@ services:
       - postgres_data:/var/lib/postgresql/data
     networks:
       - secure-vault-network
+      - secure-vault-network-monitoring
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 10s
@@ -23,6 +24,7 @@ services:
       - redis_data:/data
     networks:
       - secure-vault-network
+      - secure-vault-network-monitoring
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -47,6 +49,7 @@ services:
         condition: service_healthy
     networks:
       - secure-vault-network
+      - secure-vault-network-monitoring
     restart: unless-stopped
 
   frontend:
@@ -64,6 +67,7 @@ services:
       - backend
     networks:
       - secure-vault-network
+      - secure-vault-network-monitoring
     restart: unless-stopped
 
   proxy:
@@ -82,7 +86,41 @@ services:
       - backend
     networks:
       - secure-vault-network
+      - secure-vault-network-monitoring
     restart: unless-stopped
+
+  nagios:
+    build:
+      context: ./nagios
+      dockerfile: Dockerfile
+    image: secure-vault-nagios:local
+    container_name: secure-vault-nagios
+    ports:
+      - "8080:80"
+    profiles:
+      - monitoring
+    env_file:
+      - ./nagios/.env
+    volumes:
+      - ./nagios/config:/etc/nagios:ro
+      - ./nagios/plugins:/usr/local/nagios/libexec/custom:ro
+      - nagios_data:/var/nagios
+      - nagios_logs:/var/log/nagios
+    networks:
+      - secure-vault-network-monitoring
+    restart: unless-stopped
+    depends_on:
+      - backend
+      - frontend
+      - database
+      - redis
+      - proxy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/nagios/cgi-bin/statusmap.cgi"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
 
 volumes:
   postgres_data:
@@ -91,7 +129,13 @@ volumes:
     driver: local
   pgadmin_data:
     driver: local
+  nagios_data:
+    driver: local
+  nagios_logs:
+    driver: local
 
 networks:
   secure-vault-network:
+    driver: bridge
+  secure-vault-network-monitoring:
     driver: bridge
