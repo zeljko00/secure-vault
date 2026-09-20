@@ -14,8 +14,6 @@ import {
   encryptAESGCM,
   encryptWithPublicKey,
   importPublicKeyFromPEM,
-  loadEncryptedPrivateKey,
-  storeEncryptedPrivateKey,
 } from '@/lib/crypto'
 import { useAuthStore } from '@/stores/authStore'
 import { base64ToUint8Array, cn } from '@/lib/utils'
@@ -80,7 +78,7 @@ const TYPE_ICON: Record<SecretType, React.ReactNode> = {
 
 export function HomePage() {
   const navigate = useNavigate()
-  const { user, logout, masterKey, setMasterKey } = useAuthStore()
+  const { user, logout, masterKey, setMasterKey, loadPrivateKeyBackup, savePrivateKeyBackup } = useAuthStore()
   const [secrets, setSecrets] = useState<Secret[]>([])
   const [apiError, setApiError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
@@ -240,7 +238,7 @@ export function HomePage() {
 
     const checkIndexedDbBackup = async () => {
       try {
-        const blob = await loadEncryptedPrivateKey(user.id)
+        const blob = await loadPrivateKeyBackup(user.id)
         setHasIndexedDbBackup(Boolean(blob?.ciphertext && blob?.salt && blob?.iv))
       } catch {
         setHasIndexedDbBackup(false)
@@ -715,7 +713,7 @@ export function HomePage() {
     setRevealingReceivedSecretId(sharedSecret.id)
 
     try {
-      const encryptedPrivateKey = await loadEncryptedPrivateKey(user.id)
+      const encryptedPrivateKey = await loadPrivateKeyBackup(user.id)
       if (!encryptedPrivateKey?.ciphertext || !encryptedPrivateKey?.salt || !encryptedPrivateKey?.iv) {
         setReceivedRevealError('Encrypted private key is missing or incomplete. Import a valid backup and try again.')
         return
@@ -750,7 +748,7 @@ export function HomePage() {
     setMasterPasswordError(null)
     setApiError(null)
     try {
-      const dict = await loadEncryptedPrivateKey(user.id)
+      const dict = await loadPrivateKeyBackup(user.id)
       if (!dict || !dict.salt) {
         setMasterPasswordError('Failed to load salt — please try again')
         return
@@ -780,7 +778,7 @@ export function HomePage() {
     setApiError(null)
 
     try {
-      const existing = await loadEncryptedPrivateKey(user.id)
+      const existing = await loadPrivateKeyBackup(user.id)
       const hasBackup = Boolean(existing?.ciphertext && existing?.salt && existing?.iv)
       setHasIndexedDbBackup(hasBackup)
       if (hasBackup) {
@@ -807,7 +805,7 @@ export function HomePage() {
       const parsed = backupSchema.parse(JSON.parse(await file.text()))
       const ciphertext = parsed.encryptedPrivateKey ?? parsed.ciphertext ?? ''
 
-      await storeEncryptedPrivateKey(user.id, {
+      await savePrivateKeyBackup(user.id, {
         ciphertext,
         iv: parsed.iv,
         salt: parsed.salt,

@@ -12,7 +12,6 @@ import {
   generateKeyPair,
   exportPublicKeyToPEM,
   encryptPrivateKeyForStorage,
-  storeEncryptedPrivateKey,
   generateMasterPassword,
 } from '@/lib/crypto'
 import { cn } from '@/lib/utils'
@@ -86,7 +85,7 @@ function downloadPrivateKeyBackup(payload: PrivateKeyBackupFile): void {
 
 export function RegisterPage() {
   const navigate = useNavigate()
-  const { setUser } = useAuthStore()
+  const { setUser, savePrivateKeyBackup } = useAuthStore()
   const [apiError, setApiError] = useState<string | null>(null)
   const [isGeneratingKeys, setIsGeneratingKeys] = useState(false)
   const [masterPassword, setMasterPassword] = useState<string | null>(null)
@@ -243,7 +242,7 @@ export function RegisterPage() {
       setRegistrationMfa(response.data.mfa)
       const generatedMasterPassword = generateMasterPassword(masterPasswordLength)
       const encryptedPrivateKey = await encryptPrivateKeyForStorage(keyPair.privateKey, generatedMasterPassword)
-      await storeEncryptedPrivateKey(response.data.user.id, encryptedPrivateKey)
+      await savePrivateKeyBackup(response.data.user.id, encryptedPrivateKey)
 
       const backupPayload: PrivateKeyBackupFile = {
         version: 1,

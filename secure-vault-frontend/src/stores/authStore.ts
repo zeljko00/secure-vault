@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import type { EncryptedPrivateKeyBlob } from '@/lib/crypto'
 import type { User } from '@/types'
 import { generateDeviceId } from '@/lib/utils'
 
@@ -18,6 +19,11 @@ type AuthEntry = {
   value: string
 }
 
+type AuthPrivateKeyEntry = {
+  key: string
+  value: EncryptedPrivateKeyBlob
+}
+
 interface AuthState {
   user: User | null
   isHydrated: boolean
@@ -28,10 +34,14 @@ interface AuthState {
   mfaPending: boolean
   mfaChallengeId: string | null
   authNotice: string | null
+  privateKeyBackup: EncryptedPrivateKeyBlob | null
 
   setUser: (user: User | null) => Promise<void>
   setMasterKey: (key: CryptoKey | null) => void
   setPrivateKey: (key: CryptoKey | null) => void
+  loadPrivateKeyBackup: (userId: string) => Promise<EncryptedPrivateKeyBlob | null>
+  savePrivateKeyBackup: (userId: string, blob: EncryptedPrivateKeyBlob) => Promise<void>
+  removePrivateKeyBackup: (userId: string) => Promise<void>
   setMfaPending: (pending: boolean) => void
   setMfaChallengeId: (challengeId: string | null) => void
   setAuthNotice: (message: string | null) => void
@@ -54,7 +64,7 @@ function openAuthDB(): Promise<IDBDatabase> {
   })
 }
 
-async function readAuthEntry(key: string): Promise<string | null> {
+async function readAuthEntry<T>(key: string): Promise<T | null> {
   const db = await openAuthDB()
 
   return new Promise((resolve, reject) => {
@@ -62,7 +72,7 @@ async function readAuthEntry(key: string): Promise<string | null> {
     const request = tx.objectStore(AUTH_STORE_NAME).get(key)
 
     request.onsuccess = () => {
-      const entry = request.result as AuthEntry | undefined
+      const entry = request.result as { value?: T } | undefined
       resolve(entry?.value ?? null)
     }
 
@@ -70,12 +80,12 @@ async function readAuthEntry(key: string): Promise<string | null> {
   })
 }
 
-async function writeAuthEntry(key: string, value: string): Promise<void> {
+async function writeAuthEntry<T>(key: string, value: T): Promise<void> {
   const db = await openAuthDB()
 
   return new Promise((resolve, reject) => {
     const tx = db.transaction(AUTH_STORE_NAME, 'readwrite')
-    tx.objectStore(AUTH_STORE_NAME).put({ key, value } as AuthEntry)
+    tx.objectStore(AUTH_STORE_NAME).put({ key, value } as AuthEntry | AuthPrivateKeyEntry)
     tx.oncomplete = () => resolve()
     tx.onerror = () => reject(tx.error)
   })
@@ -94,7 +104,7 @@ async function deleteAuthEntry(key: string): Promise<void> {
 
 async function loadPersistedUser(): Promise<User | null> {
   try {
-    const stored = await readAuthEntry(AUTH_USER_STORAGE_KEY)
+    const stored = await readAuthEntry<string>(AUTH_USER_STORAGE_KEY)
     return stored ? JSON.parse(stored) as User : null
   } catch {
     return null
@@ -126,7 +136,7 @@ export async function loadPersistedDeviceId(): Promise<string> {
 
   deviceIdPromise = (async () => {
     try {
-      const stored = await readAuthEntry(AUTH_DEVICE_ID_STORAGE_KEY)
+      const stored = await readAuthEntry<string>(AUTH_DEVICE_ID_STORAGE_KEY)
       if (stored) {
         const parsed = JSON.parse(stored) as { deviceId?: unknown }
         if (typeof parsed.deviceId === 'string' && parsed.deviceId) {
@@ -165,6 +175,22 @@ export async function hydrateAuthStore(): Promise<void> {
   useAuthStore.setState({ user, isHydrated: true })
 }
 
+async function loadPrivateKeyBackupFromDb(userId: string): Promise<EncryptedPrivateKeyBlob | null> {
+  try {
+    return await readAuthEntry<EncryptedPrivateKeyBlob>(`key_${userId}`)
+  } catch {
+    return null
+  }
+}
+
+async function savePrivateKeyBackupToDb(userId: string, blob: EncryptedPrivateKeyBlob): Promise<void> {
+  await writeAuthEntry(`key_${userId}`, blob)
+}
+
+async function removePrivateKeyBackupFromDb(userId: string): Promise<void> {
+  await deleteAuthEntry(`key_${userId}`)
+}
+
 export const useAuthStore = create<AuthState>((set) => ({
   user: null,
   isHydrated: false,
@@ -173,6 +199,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   mfaPending: false,
   mfaChallengeId: null,
   authNotice: loadPersistedAuthNotice(),
+  privateKeyBackup: null,
 
   setUser: (user) => {
     set({ user })
@@ -180,6 +207,21 @@ export const useAuthStore = create<AuthState>((set) => ({
   },
   setMasterKey: (masterKey) => set({ masterKey }),
   setPrivateKey: (privateKey) => set({ privateKey }),
+  loadPrivateKeyBackup: async (userId) => {
+    const backup = await loadPrivateKeyBackupFromDb(userId)
+    set({ privateKeyBackup: backup })
+    return backup
+  },
+  savePrivateKeyBackup: async (userId, blob) => {
+    await savePrivateKeyBackupToDb(userId, blob)
+    set({ privateKeyBackup: blob })
+  },
+  removePrivateKeyBackup: async (userId) => {
+    await removePrivateKeyBackupFromDb(userId)
+    set((state) => ({
+      privateKeyBackup: state.user?.id === userId ? null : state.privateKeyBackup,
+    }))
+  },
   setMfaPending: (mfaPending) => set({ mfaPending }),
   setMfaChallengeId: (mfaChallengeId) => set({ mfaChallengeId }),
   setAuthNotice: (message) => {
@@ -197,6 +239,7 @@ export const useAuthStore = create<AuthState>((set) => ({
       user: null,
       masterKey: null,
       privateKey: null,
+      privateKeyBackup: null,
       mfaPending: false,
       mfaChallengeId: null,
       authNotice: loadPersistedAuthNotice(),
