@@ -1,9 +1,11 @@
+import { useState } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, Vault, Users, BookKey, Settings, LogOut, ShieldAlert,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/stores/authStore'
+import { LogoutPrivateKeyPrompt } from '@/components/ui/LogoutPrivateKeyPrompt'
 
 const NAV_ITEMS = [
   { to: '/dashboard', icon: <LayoutDashboard size={18} />, label: 'Dashboard' },
@@ -18,9 +20,11 @@ export function Sidebar() {
   const user     = useAuthStore((s) => s.user)
   const logout   = useAuthStore((s) => s.logout)
   const navigate = useNavigate()
+  const [showLogoutPrompt, setShowLogoutPrompt] = useState(false)
 
-  const handleLogout = async () => {
-    await logout()
+  const handleLogout = async (keepPrivateKeyBackup: boolean) => {
+    setShowLogoutPrompt(false)
+    await logout({ keepPrivateKeyBackup })
     navigate('/login')
   }
 
@@ -71,13 +75,18 @@ export function Sidebar() {
       {/* Logout */}
       <div className="p-3 border-t border-[var(--color-border)]">
         <button
-          onClick={handleLogout}
+          onClick={() => setShowLogoutPrompt(true)}
           className="flex items-center gap-3 w-full px-3 py-2 rounded-lg text-sm text-[var(--color-text-dim)] hover:text-[var(--color-danger)] hover:bg-[var(--color-danger)]/10 transition-all duration-150"
         >
           <LogOut size={18} />
           Logout
         </button>
       </div>
+      <LogoutPrivateKeyPrompt
+        open={showLogoutPrompt}
+        onCancel={() => setShowLogoutPrompt(false)}
+        onSelect={(keepPrivateKeyBackup) => void handleLogout(keepPrivateKeyBackup)}
+      />
     </aside>
   )
 }

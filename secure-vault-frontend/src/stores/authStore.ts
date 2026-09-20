@@ -45,7 +45,7 @@ interface AuthState {
   setMfaPending: (pending: boolean) => void
   setMfaChallengeId: (challengeId: string | null) => void
   setAuthNotice: (message: string | null) => void
-  logout: () => Promise<void>
+  logout: (options?: { keepPrivateKeyBackup?: boolean }) => Promise<void>
 }
 
 let cachedDeviceId: string | null = null
@@ -234,7 +234,11 @@ export const useAuthStore = create<AuthState>((set) => ({
     set({ authNotice: message })
   },
 
-  logout: () => {
+  logout: async (options) => {
+    if (!options?.keepPrivateKeyBackup && useAuthStore.getState().user?.id) {
+      await removePrivateKeyBackupFromDb(useAuthStore.getState().user!.id).catch(() => undefined)
+    }
+
     set({
       user: null,
       masterKey: null,
@@ -245,6 +249,6 @@ export const useAuthStore = create<AuthState>((set) => ({
       authNotice: loadPersistedAuthNotice(),
     })
 
-    return deleteAuthEntry(AUTH_USER_STORAGE_KEY).catch(() => undefined)
+    await deleteAuthEntry(AUTH_USER_STORAGE_KEY).catch(() => undefined)
   },
 }))

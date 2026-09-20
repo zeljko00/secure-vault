@@ -6,6 +6,7 @@ import axios from 'axios'
 import { Code2, Eye, EyeOff, FileQuestion, KeyRound, Lock, LogOut, Pencil, Plus, Send, ShieldCheck, Trash2, Users, X } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { api } from '@/lib/api'
+import { LogoutPrivateKeyPrompt } from '@/components/ui/LogoutPrivateKeyPrompt'
 import {
   decryptPrivateKeyFromBlob,
   decryptAESGCM,
@@ -115,6 +116,7 @@ export function HomePage() {
   const [receivedRevealError, setReceivedRevealError] = useState<string | null>(null)
   const [revokeStatus, setRevokeStatus] = useState<string | null>(null)
   const [revokingSharedSecretId, setRevokingSharedSecretId] = useState<string | null>(null)
+  const [showLogoutPrompt, setShowLogoutPrompt] = useState(false)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
   const {
@@ -764,8 +766,9 @@ export function HomePage() {
     }
   }
 
-  const handleLogout = async () => {
-    await logout()
+  const handleLogout = async (keepPrivateKeyBackup: boolean) => {
+    setShowLogoutPrompt(false)
+    await logout({ keepPrivateKeyBackup })
     navigate('/login')
   }
 
@@ -1045,6 +1048,11 @@ export function HomePage() {
           </div>
         </div>
       )}
+      <LogoutPrivateKeyPrompt
+        open={showLogoutPrompt}
+        onCancel={() => setShowLogoutPrompt(false)}
+        onSelect={(keepPrivateKeyBackup) => void handleLogout(keepPrivateKeyBackup)}
+      />
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_15%_20%,rgba(34,211,238,0.14),transparent_42%),radial-gradient(circle_at_85%_10%,rgba(148,163,184,0.12),transparent_40%),linear-gradient(to_bottom,#f8fbff,#eef4fb)]" />
       <div className="relative mx-auto flex w-full max-w-6xl flex-col gap-6">
         <header className="rounded-2xl border border-slate-200/80 bg-white/90 p-6 shadow-sm backdrop-blur">
@@ -1103,7 +1111,7 @@ export function HomePage() {
 
               <button
                 type="button"
-                onClick={handleLogout}
+                onClick={() => setShowLogoutPrompt(true)}
                 className="inline-flex h-11 items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50"
               >
                 <LogOut size={14} />
