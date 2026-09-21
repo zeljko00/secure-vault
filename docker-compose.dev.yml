@@ -32,8 +32,6 @@ services:
     depends_on:
       - database
     restart: unless-stopped
-    profiles:
-      - monitoring
 
   # Optional: Database migration service to handle schema changes and migrations
   db_migration:
