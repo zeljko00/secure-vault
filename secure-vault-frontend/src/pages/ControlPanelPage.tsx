@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Activity, Check, Eye, EyeOff, Plus, RefreshCw, Settings2, Trash2, UserCheck, UserX, Users } from 'lucide-react'
+import { Activity, AlertTriangle, Check, Eye, EyeOff, Plus, RefreshCw, Settings2, Shield, Trash2, UserCheck, UserX, Users } from 'lucide-react'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { LogoutPrivateKeyPrompt } from '@/components/ui/LogoutPrivateKeyPrompt'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import { useAuthStore } from '@/stores/authStore'
-import type { HoneypotAuditLog, Secret, SecretAuditLog, Team, User, UserRole } from '@/types'
+import type { AuditIntegrityStatus, HoneypotAuditLog, Secret, SecretAuditLog, Team, User, UserRole } from '@/types'
 
 const EDITABLE_ROLE_OPTIONS: Array<{ value: Exclude<UserRole, 'guest'>; label: string }> = [
   { value: 'dev', label: 'Developer' },
@@ -86,8 +86,120 @@ function formatDateTime(value: string): string {
   return parsed.toLocaleString()
 }
 
+function formatHashPreview(value?: string | null): string {
+  if (!value) {
+    return 'Unavailable'
+  }
+
+  if (value.length <= 24) {
+    return value
+  }
+
+  return `${value.slice(0, 12)}...${value.slice(-10)}`
+}
+
 function getDeactivationRecord(user: User) {
   return user.deactivated?.[0]
+}
+
+function AuditIntegritySection({ status }: { status: AuditIntegrityStatus | null }) {
+  const isValid = status?.is_valid === true
+  const isInvalid = status?.is_valid === false
+  const tampering = status?.first_tampering
+
+  return (
+    <section className="glass rounded-3xl border border-[var(--color-border)]/80 bg-[var(--color-panel)]/70 p-6 shadow-[0_18px_64px_rgba(2,8,23,0.45)]">
+      <div className="flex flex-col gap-4 border-b border-[var(--color-border)]/80 pb-4 lg:flex-row lg:items-start lg:justify-between">
+        <div className="flex items-start gap-3">
+          <span
+            className={cn(
+              'rounded-2xl border p-3',
+              isInvalid
+                ? 'border-[var(--color-danger)]/40 bg-[var(--color-danger)]/10 text-[var(--color-danger)]'
+                : 'border-[var(--color-border-glow)] bg-[var(--color-primary)]/10 text-[var(--color-primary)]',
+            )}
+          >
+            {isInvalid ? <AlertTriangle size={18} /> : <Shield size={18} />}
+          </span>
+          <div>
+            <h2 className="text-lg font-semibold tracking-tight text-[var(--color-text)]">Audit chain integrity</h2>
+            <p className="text-sm text-[var(--color-text-muted)]">
+              Verifies the hash-chained audit ledger for tampering before administrators review events.
+            </p>
+          </div>
+        </div>
+        <StatusBadge
+          variant={isInvalid ? 'revoked' : isValid ? 'active' : 'expiring'}
+          label={isInvalid ? 'Compromised' : isValid ? 'Verified' : 'Pending check'}
+        />
+      </div>
+
+      <div className="mt-6 grid gap-4 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+        <div className="rounded-2xl border border-[var(--color-border)]/80 bg-[var(--color-surface)]/70 p-5">
+          <p className="text-[11px] uppercase tracking-[0.18em] text-[var(--color-text-dim)]">Current status</p>
+          <p
+            className={cn(
+              'mt-3 text-2xl font-semibold',
+              isInvalid
+                ? 'text-[var(--color-danger)]'
+                : isValid
+                  ? 'text-[var(--color-accent)]'
+                  : 'text-[var(--color-warning)]',
+            )}
+          >
+            {isInvalid ? 'Tampering detected' : isValid ? 'Ledger verified' : 'Integrity unavailable'}
+          </p>
+          <p className="mt-2 text-sm text-[var(--color-text-muted)]">
+            {isInvalid
+              ? 'The first invalid block is shown so administrators can isolate affected audit entries quickly.'
+              : isValid
+                ? 'Every audit block currently matches its stored hash and previous-hash chain.'
+                : 'The integrity check response is not available yet.'}
+          </p>
+        </div>
+
+        <div className="rounded-2xl border border-[var(--color-border)]/80 bg-[var(--color-surface)]/70 p-5">
+          <p className="text-[11px] uppercase tracking-[0.18em] text-[var(--color-text-dim)]">First tampering point</p>
+          {tampering ? (
+            <div className="mt-3 space-y-3 text-sm text-[var(--color-text-muted)]">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div>
+                  <p className="text-[11px] uppercase tracking-[0.18em] text-[var(--color-text-dim)]">Block index</p>
+                  <p className="mt-1 font-mono text-[var(--color-danger)]">#{tampering.block_index}</p>
+                </div>
+                <div>
+                  <p className="text-[11px] uppercase tracking-[0.18em] text-[var(--color-text-dim)]">Log entry</p>
+                  <p className="mt-1 font-mono text-[var(--color-text)] break-all">{tampering.id}</p>
+                </div>
+              </div>
+              {tampering.error && (
+                <div>
+                  <p className="text-[11px] uppercase tracking-[0.18em] text-[var(--color-text-dim)]">Error</p>
+                  <p className="mt-1 text-[var(--color-danger)]">{tampering.error}</p>
+                </div>
+              )}
+              {!tampering.error && (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div>
+                    <p className="text-[11px] uppercase tracking-[0.18em] text-[var(--color-text-dim)]">Expected hash</p>
+                    <p className="mt-1 font-mono text-xs text-[var(--color-text)] break-all">{formatHashPreview(tampering.expected_hash)}</p>
+                  </div>
+                  <div>
+                    <p className="text-[11px] uppercase tracking-[0.18em] text-[var(--color-text-dim)]">Stored hash</p>
+                    <p className="mt-1 font-mono text-xs text-[var(--color-danger)] break-all">{formatHashPreview(tampering.actual_hash)}</p>
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            <p className="mt-3 text-sm text-[var(--color-text-muted)]">
+              {isValid ? 'No tampering markers were found in the audit chain.' : 'No tampering detail was returned by the backend.'}
+            </p>
+          )}
+        </div>
+      </div>
+    </section>
+  )
 }
 
 function SecretAuditLogSection({ logs }: { logs: SecretAuditLog[] }) {
@@ -766,6 +878,7 @@ export function ControlPanelPage() {
   const [generatedHoneypotSecret, setGeneratedHoneypotSecret] = useState<Secret | null>(null)
   const [showLogoutPrompt, setShowLogoutPrompt] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [auditIntegrityStatus, setAuditIntegrityStatus] = useState<AuditIntegrityStatus | null>(null)
 
   const fetchUsers = async (showLoader: boolean) => {
     if (showLoader) {
@@ -781,13 +894,14 @@ export function ControlPanelPage() {
         throw new Error('Missing authenticated admin context.')
       }
 
-      const [activeResponse, deactivatedResponse, teamsResponse, logsResponse, honeypotLogsResponse, settingsResponse] = await Promise.all([
+      const [activeResponse, deactivatedResponse, teamsResponse, logsResponse, honeypotLogsResponse, settingsResponse, integrityResponse] = await Promise.all([
         api.get<User[]>('/users/', { params: { active: '1' } }),
         api.get<User[]>('/users/', { params: { active: '0' } }),
         api.get<Team[]>('/users/teams/'),
         api.get<SecretAuditLog[]>('/secrets/access-logs/', {params: { is_honeypot: false}}),
         api.get<HoneypotAuditLog[]>('/secrets/access-logs/', { params: { is_honeypot: true } }),
         api.get<Record<string, string>>('/settings/', {}),
+        api.get<AuditIntegrityStatus>('/secrets/audit-integrity/', {}),
       ])
 
       setActiveUsers(Array.isArray(activeResponse.data) ? activeResponse.data : [])
@@ -796,6 +910,7 @@ export function ControlPanelPage() {
       setSecretAuditLogs(Array.isArray(logsResponse.data) ? logsResponse.data : [])
       setHoneypotAuditLogs(Array.isArray(honeypotLogsResponse.data) ? honeypotLogsResponse.data : [])
       setSettingsValues(normalizeSettings(settingsResponse.data))
+      setAuditIntegrityStatus(integrityResponse.data)
     } catch {
       setError('Unable to load user control data right now.')
     } finally {
@@ -1032,7 +1147,7 @@ export function ControlPanelPage() {
             </div>
           </div>
 
-          <div className="mt-6 grid gap-4 md:grid-cols-3">
+          <div className="mt-6 grid gap-4 md:grid-cols-4">
             <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)]/75 p-4">
               <div className="flex items-center gap-3 text-[var(--color-primary)]">
                 <Activity size={18} />
@@ -1053,6 +1168,31 @@ export function ControlPanelPage() {
                 <span className="text-xs uppercase tracking-[0.18em] text-[var(--color-text-dim)]">Deactivated users</span>
               </div>
               <p className="mt-3 text-3xl font-semibold text-[var(--color-text)]">{deactivatedUsers.length}</p>
+            </div>
+            <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)]/75 p-4">
+              <div className={cn('flex items-center gap-3', auditIntegrityStatus?.is_valid === false ? 'text-[var(--color-danger)]' : 'text-[var(--color-primary)]')}>
+                {auditIntegrityStatus?.is_valid === false ? <AlertTriangle size={18} /> : <Shield size={18} />}
+                <span className="text-xs uppercase tracking-[0.18em] text-[var(--color-text-dim)]">Audit integrity</span>
+              </div>
+              <p
+                className={cn(
+                  'mt-3 text-3xl font-semibold',
+                  auditIntegrityStatus?.is_valid === false
+                    ? 'text-[var(--color-danger)]'
+                    : auditIntegrityStatus?.is_valid === true
+                      ? 'text-[var(--color-accent)]'
+                      : 'text-[var(--color-warning)]',
+                )}
+              >
+                {auditIntegrityStatus?.is_valid === false ? 'Alert' : auditIntegrityStatus?.is_valid === true ? 'Healthy' : 'Unknown'}
+              </p>
+              <p className="mt-2 text-sm text-[var(--color-text-muted)]">
+                {auditIntegrityStatus?.is_valid === false
+                  ? `Block #${auditIntegrityStatus.first_tampering?.block_index ?? '?'} needs review.`
+                  : auditIntegrityStatus?.is_valid === true
+                    ? 'Ledger hash chain verified.'
+                    : 'Waiting for integrity data.'}
+              </p>
             </div>
           </div>
         </header>
@@ -1100,6 +1240,7 @@ export function ControlPanelPage() {
                 </div>
               </section>
             )}
+            <AuditIntegritySection status={auditIntegrityStatus} />
             <TeamManagementSection
               teams={teams}
               teamMemberCounts={teamMemberCounts}

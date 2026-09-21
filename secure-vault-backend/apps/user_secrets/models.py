@@ -142,3 +142,63 @@ class AuditLog(models.Model):
             ledger_state.last_block_hash = block_hash
             ledger_state.save(update_fields=["last_block_index", "last_block_hash", "updated_at"])
             return log_entry
+    
+    @classmethod
+    def verify_blockchain_integrity(cls):
+        logs = cls.objects.all().order_by('block_index')
+        
+        if not logs.exists():
+            return {'is_valid': True, 'first_tampering': None}
+        
+        for log in logs:
+            # Reconstruct the hash payload as it was when created
+            hash_payload = {
+                "action": log.action,
+                "secret_id": str(log.secret_id) if log.secret_id else None,
+                "secret_label": log.secret_label,
+                "secret_type": log.secret_type,
+                "is_shared_secret": log.is_shared_secret,
+                "is_honeypot_secret": log.is_honeypot_secret,
+                "owner_id": str(log.owner_id) if log.owner_id else None,
+                "owner_username": log.owner_username,
+                "user_id": str(log.user_id) if log.user_id else None,
+                "user_username": log.user_username,
+                "timestamp": log.timestamp.isoformat(),
+                "details": log.details or "",
+                "ip_address": log.ip_address or "",
+                "block_index": log.block_index,
+                "previous_hash": log.previous_hash,
+                "payload": log.payload or "",
+            }
+            
+            # Recompute the hash
+            expected_hash = hashlib.sha256(
+                json.dumps(hash_payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode("utf-8")
+            ).hexdigest()
+            
+            # Check if the hash matches
+            if expected_hash != log.block_hash:
+                return {
+                    'is_valid': False,
+                    'first_tampering': {
+                        'id': str(log.id),
+                        'block_index': log.block_index,
+                        'expected_hash': expected_hash,
+                        'actual_hash': log.block_hash,
+                    }
+                }
+            
+            # Check if the previous hash chain is valid (except for genesis block)
+            if log.block_index > 1:
+                previous_log = cls.objects.filter(block_index=log.block_index - 1).first()
+                if previous_log and previous_log.block_hash != log.previous_hash:
+                    return {
+                        'is_valid': False,
+                        'first_tampering': {
+                            'id': str(log.id),
+                            'block_index': log.block_index,
+                            'error': f'Previous hash mismatch: expected {previous_log.block_hash}, got {log.previous_hash}',
+                        }
+                    }
+        
+        return {'is_valid': True, 'first_tampering': None}

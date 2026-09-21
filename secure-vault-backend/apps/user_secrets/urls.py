@@ -11,6 +11,7 @@ from apps.user_secrets.views import (
     HoneypotView,
     ShareSecretView,
     SharedSecretView,
+    AuditLogIntegrityCheckView,
 )
 
 urlpatterns = [
@@ -24,4 +25,5 @@ urlpatterns = [
     path("<uuid:id>/share", ShareSecretView.as_view(), name="share-secret"),
     path("shared/<uuid:id>", SharedSecretView.as_view(), name="revoke-shared-secret"),
     path("access-logs/", SecretAuditLogsView.as_view(), name="secret-access-logs"),
+    path("audit-integrity/", AuditLogIntegrityCheckView.as_view(), name="audit-integrity-check"),
 ]

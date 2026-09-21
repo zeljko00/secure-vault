@@ -74,27 +74,40 @@ export interface AuditEntry {
 
 export interface SecretAuditLog {
   id: string
+  action?: string | null
+  block_index?: number | null
+  previous_hash?: string | null
+  block_hash?: string | null
   secret_id?: string | null
   secret_label?: string | null
   secret_type?: SecretType | null
+  is_shared_secret?: boolean | null
+  is_honeypot_secret?: boolean | null
   owner_id?: string | null
   owner_username?: string | null
+  user_id?: string | null
+  user_username?: string | null
   accessed_by_id?: string | null
   accessed_by_username?: string | null
   timestamp: string
   ip_address?: string | null
   details?: string | null
+  payload?: string | null
 }
 
-export interface HoneypotAuditLog {
-  id: string
-  secret_id?: string | null
-  secret_label?: string | null
-  secret_type?: SecretType | null
+export interface HoneypotAuditLog extends SecretAuditLog {
   secret_owner_username?: string | null
-  accessed_by_id?: string | null
-  accessed_by_username?: string | null
-  timestamp: string
-  ip_address?: string | null
-  details?: string | null
+}
+
+export interface AuditTamperingDetail {
+  id: string
+  block_index: number
+  expected_hash?: string
+  actual_hash?: string
+  error?: string
+}
+
+export interface AuditIntegrityStatus {
+  is_valid: boolean
+  first_tampering: AuditTamperingDetail | null
 }

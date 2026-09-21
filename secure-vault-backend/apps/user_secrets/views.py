@@ -447,3 +447,11 @@ class MyReceivedSecretsView(APIView):
         )
         serializer = ReceivedSharedSecretSerializer(shared_queryset, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+class AuditLogIntegrityCheckView(APIView):
+    permission_classes = [IsAuthenticated, IsAdmin]
+
+    def get(self, request):
+        result = AuditLog.verify_blockchain_integrity()
+        return Response(result, status=status.HTTP_200_OK)
