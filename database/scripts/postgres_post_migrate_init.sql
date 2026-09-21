@@ -64,3 +64,17 @@ WHERE to_regclass('public.user_secrets_auditledgerstate') IS NOT NULL\gexec
 
 SELECT format('GRANT SELECT, INSERT, UPDATE ON TABLE public.settings_setting TO %I', :'db_user')
 WHERE to_regclass('public.settings_setting') IS NOT NULL\gexec
+
+INSERT INTO public.settings_setting (key, value)
+SELECT seed.key, seed.value
+FROM (
+	VALUES
+		('user_password_min_length', '12'),
+		('master_password_length', '16'),
+		('secret_rotation_days', '90'),
+		('jwt_ttl_minutes', '10'),
+		('session_ttl_minutes', '30'),
+		('hidden_endpoint_enabled', 'false')
+) AS seed(key, value)
+WHERE to_regclass('public.settings_setting') IS NOT NULL
+ON CONFLICT (key) DO NOTHING;

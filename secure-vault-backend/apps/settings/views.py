@@ -11,7 +11,6 @@ from util.authorization import IsAdmin
 PUBLIC_SETTING_KEYS = {
     "user_password_min_length",
     "master_password_length",
-    "master_password_min_length",
 }
 
 class SettingsView(APIView):
