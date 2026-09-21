@@ -2,7 +2,9 @@ from django.db.models import Q
 from django.core.mail import send_mail
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
+from django.db import transaction
 import secrets as random_secrets
+import copy
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -11,13 +13,13 @@ from redis.exceptions import RedisError
 from django.db import connection
 
 
-from apps.user_secrets.models import Secret, SecretType, SharedSecret, SecretAccessLog, HoneypotSecretAccessLog
+from apps.user_secrets.models import Secret, SecretType, SharedSecret, AuditLog
 from apps.user_secrets.serializers import (
     SecretSerializer,
     OwnedSharedSecretSerializer,
     SharedSecretSerializer,
     ReceivedSharedSecretSerializer,
-    SecretAccessLogSerializer,
+    SecretAuditLogSerializer,
 )
 from apps.users.models import RefreshToken, User, UserDeactivationLog
 from apps.settings.models import Setting
@@ -28,21 +30,35 @@ from util.authentication import UserBasicAuthentication
 
 from util.authorization import CanManageSecrets, IsAdmin, CanManageSecret, CanShareSecret, CanManageSharedSecret, CanManageSharedSecrets, CanManageReceivedSecrets
 
+def build_audit_payload(*, secret: Secret, user: User, is_shared: bool, is_honeypot: bool, details: str) -> dict:
+    # Deep copy the secret to preserve it even after deletion from DB
+    secret_copy = copy.deepcopy(secret)
+    
+    payload = {
+        "actor": user,
+        "secret": secret_copy,
+        "is_shared": is_shared,
+        "is_honeypot": is_honeypot,
+        "details": details,
+    }
+    return payload
+
 def is_honeypot(secret, user: User, request) -> bool:
     ip_address = get_client_ip(request)
     argon2 = Argon2PasswordHasher()
     try:
         argon2.verify("honeypot", secret.marker)
         print("==========================================")
-        print(f"Honeypot secret accessed by user ({user}) from IP {ip_address}. Logging access and notifying admins.")
+        print(f"Honeypot secret accessed by user ({user}).")
         print("==========================================")
 
-        HoneypotSecretAccessLog.objects.create(
+        request._request.audit = build_audit_payload(
             secret=secret,
             user=user,
-            ip_address=ip_address
+            is_shared=False,
+            is_honeypot=True,
+            details="Accessed honeypot secret!",
         )
-        
         if not UserDeactivationLog.objects.filter(user=user).exists():
             UserDeactivationLog.objects.create(
                 user=user,
@@ -113,16 +129,18 @@ class MySecretsView(APIView):
         return Response(serializer.data, status=status.HTTP_200_OK)
 
 
-class SecretAccessLogsView(APIView):
+class SecretAuditLogsView(APIView):
     permission_classes = [IsAuthenticated, IsAdmin]
-    
-    def get(self, request):
 
+    def get(self, request):
+        # Convert string query param to boolean: "true" -> True, "false" -> False
+        is_honeypot = request.query_params.get("is_honeypot", "false").lower() == "true"
+        
         access_logs = (
-            SecretAccessLog.objects.select_related("secret", "secret__owner", "user")
-            .order_by("-timestamp")
+            AuditLog.objects.filter(is_honeypot_secret=is_honeypot)
+            .order_by("-block_index")
         )
-        serializer = SecretAccessLogSerializer(access_logs, many=True)
+        serializer = SecretAuditLogSerializer(access_logs, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
 
@@ -142,6 +160,13 @@ class SecretView(APIView):
 
     def put(self, request, id):
         secret = get_object_or_404(Secret, id=id)
+        request._request.audit = build_audit_payload(
+            secret=secret,
+            user=request.user,
+            is_shared=False,
+            is_honeypot=False,
+            details="Updating secret!",
+        )
         self.check_object_permissions(request, secret)
         serializer = SecretSerializer(secret, data=request.data, partial=True)
         if serializer.is_valid():
@@ -151,6 +176,13 @@ class SecretView(APIView):
     
     def delete(self, request, id):
         secret = get_object_or_404(Secret, id=id)
+        request._request.audit = build_audit_payload(
+            secret=secret,
+            user=request.user,
+            is_shared=False,
+            is_honeypot=False,
+            details="Deleting secret!",
+        )
         self.check_object_permissions(request, secret)
         secret.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
@@ -165,9 +197,7 @@ class PublicSecretView(APIView):
         enabled = Setting.objects.filter(key="hidden_endpoint_enabled").first()
         if not enabled or enabled.value != "true":
             return Response(status=status.HTTP_404_NOT_FOUND)
-        
-        user = request.user
-        
+
         with connection.cursor() as cursor:
             cursor.execute(
                 "SELECT id FROM user_secrets_secret WHERE owner_id = '"
@@ -180,7 +210,7 @@ class PublicSecretView(APIView):
         secret = get_object_or_404(Secret, id=row[0])
         
         # Log honeypot access if marked
-        is_honeypot(secret, user, request)
+        is_honeypot(secret, request.user, request)
         
         serializer = SecretSerializer(secret)
         return Response(serializer.data, status=status.HTTP_200_OK)
@@ -271,13 +301,15 @@ class SharedSecretView(APIView):
         shared = get_object_or_404(
             SharedSecret, id=id
         )
+        request._request.audit = build_audit_payload(
+            secret=shared.secret,
+            user=request.user,
+            is_shared=True,
+            is_honeypot=False,
+            details="Accessing shared secret!",
+        )
         self.check_object_permissions(request, shared)
         
-        SecretAccessLog.objects.create(
-            secret=shared.secret,
-            user_id=request.user.id,
-            ip_address=get_client_ip(request)
-        )
 
         if shared.sharing_revoked:
             return Response(status=status.HTTP_404_NOT_FOUND)
@@ -305,6 +337,13 @@ class SharedSecretView(APIView):
 
     def put(self, request, id):
         shared = get_object_or_404(SharedSecret, id=id)
+        request._request.audit = build_audit_payload(
+            secret=shared.secret,
+            user=request.user,
+            is_shared=True,
+            is_honeypot=False,
+            details="Updating shared secret!",
+        )
         self.check_object_permissions(request, shared)
 
         payload = request.data.get("cipher_text")
@@ -360,6 +399,13 @@ class SharedSecretView(APIView):
 
     def delete(self, request, id):
         shared = get_object_or_404(SharedSecret, id=id)
+        request._request.audit = build_audit_payload(
+            secret=shared.secret,
+            user=request.user,
+            is_shared=True,
+            is_honeypot=False,
+            details="Deleting shared secret!",
+        )
         self.check_object_permissions(request, shared)
         shared.sharing_revoked = True
         shared.save()
@@ -400,15 +446,4 @@ class MyReceivedSecretsView(APIView):
             .order_by("secret__owner__username", "secret__label")
         )
         serializer = ReceivedSharedSecretSerializer(shared_queryset, many=True)
-        return Response(serializer.data, status=status.HTTP_200_OK)
-    
-class HoneypotAccessLogsView(APIView):
-    permission_classes = [IsAuthenticated, IsAdmin]
-
-    def get(self, request):
-
-        access_logs = (
-            HoneypotSecretAccessLog.objects.order_by("-timestamp")
-        )
-        serializer = SecretAccessLogSerializer(access_logs, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)

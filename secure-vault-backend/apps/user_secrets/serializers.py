@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from apps.user_secrets.models import Secret, SharedSecret, SecretAccessLog, HoneypotSecretAccessLog
+from apps.user_secrets.models import Secret, SharedSecret, AuditLog
 from django.utils import timezone
 from django.contrib.auth.hashers import Argon2PasswordHasher
 
@@ -91,60 +91,33 @@ class ReceivedSharedSecretSerializer(serializers.ModelSerializer):
             "sharing_revoked",
         ]
         
-class SecretAccessLogSerializer(serializers.ModelSerializer):
-    secret_id = serializers.UUIDField(source="secret.id", read_only=True)
-    secret_label = serializers.CharField(source="secret.label", read_only=True)
-    secret_type = serializers.CharField(source="secret.type", read_only=True)
-    accessed_by_id = serializers.UUIDField(source="user.id", read_only=True)
-    accessed_by_username = serializers.CharField(source="user.username", read_only=True)
-    owner_id = serializers.UUIDField(source="secret.owner.id", read_only=True)
-    owner_username = serializers.CharField(source="secret.owner.username", read_only=True)
-    
+class SecretAuditLogSerializer(serializers.ModelSerializer):
+
+    action = serializers.CharField(read_only=True)
+    block_index = serializers.IntegerField(read_only=True)
+    previous_hash = serializers.CharField(read_only=True)
+    block_hash = serializers.CharField(read_only=True)
+    payload = serializers.CharField(read_only=True)
+
     class Meta:
-        model = SecretAccessLog
+        model = AuditLog
         fields = [
             "id",
+            "action",
+            "block_index",
+            "previous_hash",
+            "block_hash",
             "secret_id",
             "secret_label",
             "secret_type",
-            "accessed_by_id",
-            "accessed_by_username",
-            "timestamp",
-            "ip_address",
-            "details",
+            "is_shared_secret",
+            "is_honeypot_secret",
             "owner_id",
             "owner_username",
-        ]
-
-
-class HoneypotSecretAccessLogSerializer(serializers.ModelSerializer):
-    secret_id = serializers.SerializerMethodField()
-    secret_label = serializers.SerializerMethodField()
-    accessed_by_id = serializers.SerializerMethodField()
-    accessed_by_username = serializers.SerializerMethodField()
-    
-
-    def get_secret_id(self, obj):
-        return obj.secret.id if obj.secret else None
-
-    def get_secret_label(self, obj):
-        return obj.secret.label if obj.secret else None
-
-    def get_accessed_by_id(self, obj):
-        return obj.user.id if obj.user else None
-
-    def get_accessed_by_username(self, obj):
-        return obj.user.username if obj.user else None
-
-    class Meta:
-        model = HoneypotSecretAccessLog
-        fields = [
-            "id",
-            "secret_id",
-            "secret_label",
-            "accessed_by_id",
-            "accessed_by_username",
+            "user_id",
+            "user_username",
             "timestamp",
             "ip_address",
             "details",
+            "payload",
         ]

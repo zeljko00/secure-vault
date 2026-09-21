@@ -142,9 +142,7 @@ export function HomePage() {
     setOwnedSharedSecretsError(null)
 
     try {
-      const response = await api.get<OwnedSharedSecret[]>('/secrets/shared/by-me/', {
-        params: { user: activeUser.id },
-      })
+      const response = await api.get<OwnedSharedSecret[]>('/secrets/shared/by-me/', {})
       setOwnedSharedSecrets(Array.isArray(response.data) ? response.data : [])
     } catch {
       setOwnedSharedSecrets([])
@@ -163,9 +161,7 @@ export function HomePage() {
     setReceivedSharedSecretsError(null)
 
     try {
-      const response = await api.get<ReceivedSharedSecret[]>('/secrets/shared/with-me/', {
-        params: { user: activeUser.id },
-      })
+      const response = await api.get<ReceivedSharedSecret[]>('/secrets/shared/with-me/', {})
       setReceivedSharedSecrets(Array.isArray(response.data) ? response.data : [])
     } catch {
       setReceivedSharedSecrets([])
@@ -185,9 +181,7 @@ export function HomePage() {
 
     const fetchSecrets = async () => {
       try {
-        const res = await api.get<Secret[]>('/secrets/me/', {
-          params: { user: user.id },
-        })
+        const res = await api.get<Secret[]>('/secrets/me/', {})
         setSecrets(Array.isArray(res.data) ? res.data : [])
       } catch (err: unknown) {
         if (axios.isAxiosError(err) && err.response?.status === 404) {
@@ -261,9 +255,7 @@ export function HomePage() {
         value: encryptedBlob.ciphertext,
         iv: encryptedBlob.iv,
       },
-      {
-        params: { user: user?.id },
-      },
+      {},
     )
 
     setSecrets((prev) => [...prev, res.data])
@@ -280,9 +272,6 @@ export function HomePage() {
         type: data.type,
         value: encryptedBlob.ciphertext,
         iv: encryptedBlob.iv,
-      },
-      {
-        params: { user: user?.id },
       },
     )
 
@@ -404,9 +393,7 @@ export function HomePage() {
     setDeletingSecretId(secret.id)
 
     try {
-      await api.delete(`/secrets/${secret.id}/`, {
-        params: { user: user.id },
-      })
+      await api.delete(`/secrets/${secret.id}/`, {})
 
       setSecrets((prev) => prev.filter((item) => item.id !== secret.id))
       setRevealedSecrets((prev) => {
@@ -633,7 +620,7 @@ export function HomePage() {
               cipher_text: encryptedPayload,
               ...(sharingExpiresAt ? { sharing_expires_at: sharingExpiresAt.toISOString() } : {}),
             },
-            { params: { user: user.id } },
+            {},
           )
         }),
       )
@@ -677,9 +664,7 @@ export function HomePage() {
     setRevokingSharedSecretId(sharedSecretId)
 
     try {
-      await api.delete(`/secrets/shared/${sharedSecretId}`, {
-        params: { user: user.id },
-      })
+      await api.delete(`/secrets/shared/${sharedSecretId}`, {})
 
       setOwnedSharedSecrets((prev) => prev.filter((sharedSecret) => sharedSecret.id !== sharedSecretId))
       setRevokeStatus('Sharing revoked successfully.')
@@ -722,9 +707,7 @@ export function HomePage() {
       }
 
       const privateKey = await decryptPrivateKeyFromBlob(masterKey, encryptedPrivateKey)
-      const response = await api.get<SharedSecretPayloadResponse>(`/secrets/shared/${sharedSecret.id}`, {
-        params: { user: user.id },
-      })
+      const response = await api.get<SharedSecretPayloadResponse>(`/secrets/shared/${sharedSecret.id}`, {})
       const plaintext = await decryptWithPrivateKey(privateKey, response.data.cipher_text)
 
       setRevealedReceivedSecrets((prev) => ({

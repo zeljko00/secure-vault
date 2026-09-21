@@ -72,7 +72,7 @@ export interface AuditEntry {
   hash?: string
 }
 
-export interface SecretAccessLog {
+export interface SecretAuditLog {
   id: string
   secret_id?: string | null
   secret_label?: string | null
@@ -86,7 +86,7 @@ export interface SecretAccessLog {
   details?: string | null
 }
 
-export interface HoneypotAccessLog {
+export interface HoneypotAuditLog {
   id: string
   secret_id?: string | null
   secret_label?: string | null

@@ -6,7 +6,7 @@ import { cn } from '@/lib/utils'
 import { LogoutPrivateKeyPrompt } from '@/components/ui/LogoutPrivateKeyPrompt'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import { useAuthStore } from '@/stores/authStore'
-import type { HoneypotAccessLog, Secret, SecretAccessLog, Team, User, UserRole } from '@/types'
+import type { HoneypotAuditLog, Secret, SecretAuditLog, Team, User, UserRole } from '@/types'
 
 const EDITABLE_ROLE_OPTIONS: Array<{ value: Exclude<UserRole, 'guest'>; label: string }> = [
   { value: 'dev', label: 'Developer' },
@@ -90,7 +90,7 @@ function getDeactivationRecord(user: User) {
   return user.deactivated?.[0]
 }
 
-function SecretAccessLogSection({ logs }: { logs: SecretAccessLog[] }) {
+function SecretAuditLogSection({ logs }: { logs: SecretAuditLog[] }) {
   return (
     <section className="glass rounded-3xl border border-[var(--color-border)]/80 bg-[var(--color-panel)]/70 p-6 shadow-[0_18px_64px_rgba(2,8,23,0.45)]">
       <div className="flex items-start justify-between gap-4 border-b border-[var(--color-border)]/80 pb-4">
@@ -99,7 +99,7 @@ function SecretAccessLogSection({ logs }: { logs: SecretAccessLog[] }) {
             <Eye size={18} />
           </span>
           <div>
-            <h2 className="text-lg font-semibold tracking-tight text-[var(--color-text)]">Secret access logs</h2>
+            <h2 className="text-lg font-semibold tracking-tight text-[var(--color-text)]">Audit logs</h2>
             <p className="text-sm text-[var(--color-text-muted)]">
               Shared secret retrieval events recorded for administrative review.
             </p>
@@ -120,7 +120,7 @@ function SecretAccessLogSection({ logs }: { logs: SecretAccessLog[] }) {
               <span>Owner</span>
               <span>Accessed by</span>
               <span>Timestamp</span>
-              <span>Origin</span>
+              <span>Action</span>
             </div>
             <div>
               {logs.map((log) => (
@@ -130,21 +130,21 @@ function SecretAccessLogSection({ logs }: { logs: SecretAccessLog[] }) {
                 >
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
+                      {log.secret_type ? <StatusBadge variant={log.secret_type} /> : <StatusBadge variant="other" label="Unknown" />}
                       <p className="truncate text-sm font-medium text-[var(--color-text)]">
                         {log.secret_label ?? 'Secret removed'}
                       </p>
-                      {log.secret_type ? <StatusBadge variant={log.secret_type} /> : <StatusBadge variant="other" label="Unknown" />}
                     </div>
                   </div>
                   <div className="min-w-0 text-sm text-[var(--color-text-muted)]">
                     <p className="truncate">{log.owner_username ?? 'Unknown owner'}</p>
                   </div>
                   <div className="min-w-0 text-sm text-[var(--color-text-muted)]">
-                    <p className="truncate">{log.accessed_by_username ?? 'Unknown user'}</p>
+                    <p className="truncate">{log.user_username ?? 'Unknown user'}</p>
                   </div>
                   <div className="text-sm text-[var(--color-text-muted)]">{formatDateTime(log.timestamp)}</div>
-                  <div className="min-w-0 text-sm text-[var(--color-text-muted)]">
-                    <p className="truncate font-mono text-xs text-[var(--color-text-dim)]">{log.ip_address ?? 'Unknown IP'}</p>
+                  <div className="text-sm font-mono text-[var(--color-accent)]">
+                  {log.action ?? 'Unknown'} : {log.payload ?? 'Unknown'}
                   </div>
                 </div>
               ))}
@@ -156,7 +156,7 @@ function SecretAccessLogSection({ logs }: { logs: SecretAccessLog[] }) {
   )
 }
 
-function HoneypotAccessLogSection({ logs }: { logs: HoneypotAccessLog[] }) {
+function HoneypotAuditLogSection({ logs }: { logs: HoneypotAuditLog[] }) {
   return (
     <section className="glass rounded-3xl border border-[var(--color-border)]/80 bg-[var(--color-panel)]/70 p-6 shadow-[0_18px_64px_rgba(2,8,23,0.45)]">
       <div className="flex items-start justify-between gap-4 border-b border-[var(--color-border)]/80 pb-4">
@@ -198,15 +198,14 @@ function HoneypotAccessLogSection({ logs }: { logs: HoneypotAccessLog[] }) {
                       <p className="truncate text-sm font-medium text-[var(--color-text)]">
                         {log.secret_label ?? 'Secret removed'}
                       </p>
-                      <StatusBadge variant='honeypot' />
                     </div>
                   </div>
                   <div className="min-w-0 text-sm text-[var(--color-text-muted)]">
-                    <p className="truncate">{log.accessed_by_username ?? 'Unknown user'}</p>
+                    <p className="truncate">{log.user_username ?? 'Unknown user'}</p>
                   </div>
                   <div className="text-sm text-[var(--color-text-muted)]">{formatDateTime(log.timestamp)}</div>
                   <div className="min-w-0 text-sm text-[var(--color-text-muted)]">
-                    <p className="truncate font-mono text-xs text-[var(--color-text-dim)]">{log.ip_address ?? 'Unknown IP'}</p>
+                    <p className="truncate font-mono text-xs text-[var(--color-danger)]">{log.ip_address ?? 'Unknown IP'}</p>
                   </div>
                 </div>
               ))}
@@ -749,8 +748,8 @@ export function ControlPanelPage() {
   const navigate = useNavigate()
   const [activeUsers, setActiveUsers] = useState<User[]>([])
   const [deactivatedUsers, setDeactivatedUsers] = useState<User[]>([])
-  const [secretAccessLogs, setSecretAccessLogs] = useState<SecretAccessLog[]>([])
-  const [honeypotAccessLogs, setHoneypotAccessLogs] = useState<HoneypotAccessLog[]>([])
+  const [secretAuditLogs, setSecretAuditLogs] = useState<SecretAuditLog[]>([])
+  const [honeypotAuditLogs, setHoneypotAuditLogs] = useState<HoneypotAuditLog[]>([])
   const [settingsValues, setSettingsValues] = useState<Record<string, string>>(() => normalizeSettings())
   const [teams, setTeams] = useState<Team[]>([])
   const [teamName, setTeamName] = useState('')
@@ -786,16 +785,16 @@ export function ControlPanelPage() {
         api.get<User[]>('/users/', { params: { active: '1' } }),
         api.get<User[]>('/users/', { params: { active: '0' } }),
         api.get<Team[]>('/users/teams/'),
-        api.get<SecretAccessLog[]>('/secrets/access-logs/', { params: { user: user.id } }),
-        api.get<HoneypotAccessLog[]>('/secrets/access-logs/honeypots/', { params: { user: user.id } }),
-        api.get<Record<string, string>>('/settings/', { params: { user: user.id } }),
+        api.get<SecretAuditLog[]>('/secrets/access-logs/', {params: { is_honeypot: false}}),
+        api.get<HoneypotAuditLog[]>('/secrets/access-logs/', { params: { is_honeypot: true } }),
+        api.get<Record<string, string>>('/settings/', {}),
       ])
 
       setActiveUsers(Array.isArray(activeResponse.data) ? activeResponse.data : [])
       setDeactivatedUsers(Array.isArray(deactivatedResponse.data) ? deactivatedResponse.data : [])
       setTeams(Array.isArray(teamsResponse.data) ? teamsResponse.data : [])
-      setSecretAccessLogs(Array.isArray(logsResponse.data) ? logsResponse.data : [])
-      setHoneypotAccessLogs(Array.isArray(honeypotLogsResponse.data) ? honeypotLogsResponse.data : [])
+      setSecretAuditLogs(Array.isArray(logsResponse.data) ? logsResponse.data : [])
+      setHoneypotAuditLogs(Array.isArray(honeypotLogsResponse.data) ? honeypotLogsResponse.data : [])
       setSettingsValues(normalizeSettings(settingsResponse.data))
     } catch {
       setError('Unable to load user control data right now.')
@@ -935,7 +934,7 @@ export function ControlPanelPage() {
       const response = await api.put<Record<string, string>>(
         `/settings/${encodeURIComponent(key)}/`,
         { value: valueOverride ?? settingsValues[key] ?? '' },
-        { params: { user: user.id } },
+        {},
       )
 
       setSettingsValues((current) => ({
@@ -1163,8 +1162,8 @@ export function ControlPanelPage() {
                 void handleToggleTeam(userId, teamId, isAssigned)
               }}
             />
-            <SecretAccessLogSection logs={secretAccessLogs} />
-            <HoneypotAccessLogSection logs={honeypotAccessLogs} />
+            <SecretAuditLogSection logs={secretAuditLogs} />
+            <HoneypotAuditLogSection logs={honeypotAuditLogs} />
           </div>
         )}
       </div>
