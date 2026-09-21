@@ -12,14 +12,14 @@ global_rules:
       ip-restriction:
         whitelist:
           - 127.0.0.1
-          - 172.20.0.0/16
+          - 172.22.0.0/16
         rejected_code: 403
         rejected_msg: Access denied - IP not whitelisted
       uri-blocker:
         rejected_code: 413
         rejected_msg: Request URI too long or malicious
         block_rules:
-          - "^.{8192,}$" # URLs longer than 8KB
+          - "^.{512,}$" # URLs longer than 8KB
           - "\\.(pem|key|env|pfx|p12|crt|cer)($|\\?)" # Cert/key/config files
           - "(/etc/passwd|/etc/shadow|/.aws/|/.ssh/|/.env)" # Sensitive file paths
           - "\\.\\./" # Path traversal ../
