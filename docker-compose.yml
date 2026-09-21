@@ -32,6 +32,20 @@ services:
       retries: 5
     restart: unless-stopped
 
+  api-gateway:
+    image: apache/apisix:3.14.0-debian
+    container_name: secure-vault-api-gateway
+    volumes:
+      - ./api-gateway/conf/config.yaml:/usr/local/apisix/conf/config.yaml:ro
+      - ./api-gateway/conf/apisix.yaml:/usr/local/apisix/conf/apisix.yaml:ro
+    depends_on:
+      - backend
+      - redis
+    networks:
+      - secure-vault-network
+      - secure-vault-network-monitoring
+    restart: unless-stopped
+
   backend:
     build:
       context: ./secure-vault-backend
@@ -83,7 +97,7 @@ services:
       - ./nginx/certs:/etc/nginx/certs:ro
     depends_on:
       - frontend
-      - backend
+      - api-gateway
     networks:
       - secure-vault-network
       - secure-vault-network-monitoring

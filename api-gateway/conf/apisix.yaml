@@ -1,0 +1,164 @@
+upstreams:
+  - id: secure-vault-backend
+    type: roundrobin
+    scheme: http
+    pass_host: pass
+    nodes:
+      "backend:8000": 1
+
+global_rules:
+  - id: security-global-block
+    plugins:
+      ip-restriction:
+        whitelist:
+          - 127.0.0.1
+          - 172.20.0.0/16
+        rejected_code: 403
+        rejected_msg: Access denied - IP not whitelisted
+      uri-blocker:
+        rejected_code: 413
+        rejected_msg: Request URI too long or malicious
+        block_rules:
+          - "^.{8192,}$" # URLs longer than 8KB
+          - "\\.(pem|key|env|pfx|p12|crt|cer)($|\\?)" # Cert/key/config files
+          - "(/etc/passwd|/etc/shadow|/.aws/|/.ssh/|/.env)" # Sensitive file paths
+          - "\\.\\./" # Path traversal ../
+          - "%2e%2e" # Encoded path traversal
+          - "\\$\\{.*\\}" # Template injection
+          - "<<.*>>" # Template injection
+      limit-req:
+        rate: 100
+        burst: 50
+        key_type: var
+        key: http_x_real_ip
+        rejected_code: 429
+        rejected_msg: Request limit exceeded
+
+routes:
+  - id: diagnostics-health
+    name: diagnostics-health
+    uri: /api/diagnostics/health/*
+    methods:
+      - GET
+    upstream_id: secure-vault-backend
+
+  - id: users-api
+    name: users-api
+    uri: /api/users/*
+    upstream_id: secure-vault-backend
+
+  - id: users-register
+    name: users-register
+    uri: /api/users/
+    methods:
+      - POST
+    upstream_id: secure-vault-backend
+    plugins:
+      limit-count:
+        count: 5
+        time_window: 300
+        rejected_code: 429
+        rejected_msg: Too many registration attempts.
+        key_type: var
+        key: http_x_real_ip
+        policy: redis
+        redis_host: redis
+        redis_port: 6379
+        redis_timeout: 1000
+        allow_degradation: true
+
+  - id: users-login
+    name: users-login
+    uri: /api/users/login/
+    methods:
+      - POST
+    upstream_id: secure-vault-backend
+    plugins:
+      limit-count:
+        count: 10
+        time_window: 60
+        rejected_code: 429
+        rejected_msg: Too many login attempts.
+        key_type: var
+        key: http_x_real_ip
+        policy: redis
+        redis_host: redis
+        redis_port: 6379
+        redis_timeout: 1000
+        allow_degradation: true
+
+  - id: users-mfa
+    name: users-mfa
+    uri: /api/users/mfa/
+    methods:
+      - POST
+    upstream_id: secure-vault-backend
+    plugins:
+      request-validation:
+        rejected_code: 400
+        rejected_msg: Required request headers are missing.
+        header_schema:
+          type: object
+          required:
+            - X-Device-Id
+          properties:
+            X-Device-Id:
+              type: string
+              minLength: 1
+              maxLength: 256
+      limit-count:
+        count: 15
+        time_window: 300
+        rejected_code: 429
+        rejected_msg: Too many MFA attempts.
+        key_type: var
+        key: http_x_real_ip
+        policy: redis
+        redis_host: redis
+        redis_port: 6379
+        redis_timeout: 1000
+        allow_degradation: true
+
+  - id: users-refresh
+    name: users-refresh
+    uri: /api/users/refresh/
+    methods:
+      - POST
+    upstream_id: secure-vault-backend
+    plugins:
+      limit-count:
+        count: 30
+        time_window: 60
+        rejected_code: 429
+        rejected_msg: Too many refresh attempts.
+        key_type: var
+        key: http_x_real_ip
+        policy: redis
+        redis_host: redis
+        redis_port: 6379
+        redis_timeout: 1000
+        allow_degradation: true
+
+  - id: secrets-api
+    name: secrets-api
+    uri: /api/secrets/*
+    upstream_id: secure-vault-backend
+    plugins:
+      request-validation:
+        rejected_code: 400
+        rejected_msg: Required request headers are missing.
+        header_schema:
+          type: object
+          required:
+            - X-Device-Id
+          properties:
+            X-Device-Id:
+              type: string
+              minLength: 1
+              maxLength: 256
+
+  - id: settings-api
+    name: settings-api
+    uri: /api/settings/*
+    upstream_id: secure-vault-backend
+#END
