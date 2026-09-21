@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom'
 import { Activity, AlertTriangle, Check, Eye, EyeOff, Plus, RefreshCw, Settings2, Shield, Trash2, UserCheck, UserX, Users } from 'lucide-react'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
-import { LogoutPrivateKeyPrompt } from '@/components/ui/LogoutPrivateKeyPrompt'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import { useAuthStore } from '@/stores/authStore'
 import type { AuditIntegrityStatus, HoneypotAuditLog, Secret, SecretAuditLog, Team, User, UserRole } from '@/types'
@@ -876,7 +875,6 @@ export function ControlPanelPage() {
   const [savingSettingKey, setSavingSettingKey] = useState<string | null>(null)
   const [isGeneratingHoneypotSecret, setIsGeneratingHoneypotSecret] = useState(false)
   const [generatedHoneypotSecret, setGeneratedHoneypotSecret] = useState<Secret | null>(null)
-  const [showLogoutPrompt, setShowLogoutPrompt] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [auditIntegrityStatus, setAuditIntegrityStatus] = useState<AuditIntegrityStatus | null>(null)
 
@@ -1092,9 +1090,8 @@ export function ControlPanelPage() {
     }
   }
 
-  const handleLogout = async (keepPrivateKeyBackup: boolean) => {
-    setShowLogoutPrompt(false)
-    await logout({ keepPrivateKeyBackup })
+  const handleLogout = async () => {
+    await logout({ keepPrivateKeyBackup: false })
     navigate('/login')
   }
 
@@ -1139,7 +1136,7 @@ export function ControlPanelPage() {
               </button>
               <button
                 type="button"
-                onClick={() => setShowLogoutPrompt(true)}
+                onClick={() => void handleLogout()}
                 className="inline-flex items-center justify-center gap-2 rounded-2xl border border-[var(--color-danger)]/40 bg-[var(--color-danger)]/10 px-4 py-2.5 text-sm font-medium text-[var(--color-danger)] transition-all duration-200 hover:bg-[var(--color-danger)]/16 hover:shadow-[0_0_18px_rgba(239,68,68,0.2)]"
               >
                 Logout
@@ -1309,11 +1306,6 @@ export function ControlPanelPage() {
         )}
       </div>
 
-      <LogoutPrivateKeyPrompt
-        open={showLogoutPrompt}
-        onCancel={() => setShowLogoutPrompt(false)}
-        onSelect={(keepPrivateKeyBackup) => void handleLogout(keepPrivateKeyBackup)}
-      />
     </div>
   )
 }
