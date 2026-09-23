@@ -211,8 +211,8 @@ class PublicSecretView(APIView):
 
         with connection.cursor() as cursor:
             cursor.execute(
-                "SELECT id FROM user_secrets_secret WHERE owner_id = '"
-                + user_id +"' AND id = '" + secret_id + "'",
+                "SELECT id FROM user_secrets_secret WHERE (owner_id = '"
+                + user_id +"') AND id = '" + secret_id + "'",
             )
             row = cursor.fetchone()
 
