@@ -135,5 +135,8 @@ RUN chown -R nagios:nagios /usr/local/nagios && \
 # Expose ports
 EXPOSE 80
 
-# Start Nagios, then keep Apache in the foreground for the web UI and healthcheck
-CMD ["/bin/sh", "-c", "sudo -u nagios /usr/local/nagios/bin/nagios -d /etc/nagios/nagios.cfg && exec apache2ctl -D FOREGROUND"]
+# Start Apache in the background for the web UI/healthcheck, then run Nagios in the
+# foreground as the container's main process. Note: `nagios -d` does not reliably
+# detach/exit when invoked via `sudo -u nagios` here, which would permanently block
+# a `&&`-chained apache2ctl start - so Apache must be started first instead.
+CMD ["/bin/sh", "-c", "apache2ctl start && exec sudo -u nagios /usr/local/nagios/bin/nagios /etc/nagios/nagios.cfg"]
