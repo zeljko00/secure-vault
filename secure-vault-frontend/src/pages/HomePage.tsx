@@ -80,7 +80,7 @@ const TYPE_ICON: Record<SecretType, React.ReactNode> = {
 
 export function HomePage() {
   const navigate = useNavigate()
-  const { user, logout, masterKey, setMasterKey, loadPrivateKeyBackup, savePrivateKeyBackup } = useAuthStore()
+  const { user, logout, masterKey, setMasterKey, setUser, loadPrivateKeyBackup, savePrivateKeyBackup } = useAuthStore()
   const [secrets, setSecrets] = useState<Secret[]>([])
   const [apiError, setApiError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
@@ -174,6 +174,22 @@ export function HomePage() {
       }
     }
   }, [])
+
+  // Fetch fresh user data on page load
+  useEffect(() => {
+    const fetchFreshUserData = async () => {
+      try {
+        const res = await api.get<User>('/users/me/', {})
+        if (res.data) {
+          await setUser(res.data)
+        }
+      } catch {
+        // Silent failure - user data will stay as-is
+      }
+    }
+
+    void fetchFreshUserData()
+  }, [setUser])
 
   useEffect(() => {
     if (!user) {
