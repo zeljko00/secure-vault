@@ -22,15 +22,19 @@ DB_NAME=secure_vault DB_USER='secure_vault_owner' DB_PASSWORD='secure_vault_owne
 # Start container and run migrations
 docker-compose --profile database-migration up
 
-# Local HTTPS setup for frontend + backend behind nginx
-# 1) Generate self-signed certificate.
-# By default SAN includes localhost, 127.0.0.1, current hostname and primary LAN IP.
+# Local HTTPS setup for frontend + backend behind nginx and Redis TLS
+# 1) Generate local TLS assets.
+# This creates:
+#   - nginx/certs/proxy.crt + proxy.key for HTTPS termination
+#   - database/tls/ca/ca.crt as the local Redis CA
+#   - database/tls/redis/redis.crt + redis.key for TLS-only Redis
+# By default the proxy SAN includes localhost, 127.0.0.1, current hostname and primary LAN IP.
 # Optional overrides:
 #   EXTRA_DNS=securevault.local EXTRA_IPS=192.168.100.50 ./scripts/generate-local-tls.sh
 chmod +x scripts/generate-local-tls.sh
 ./scripts/generate-local-tls.sh
 
-# 2) Start services with nginx TLS termination
+# 2) Start services with nginx TLS termination, APISIX in front of the backend API, and Redis TLS enabled
 docker compose --profile dev -f docker-compose.yml -f docker-compose.dev.yml up --build
 
 # 3) Open app over HTTPS
@@ -39,3 +43,11 @@ docker compose --profile dev -f docker-compose.yml -f docker-compose.dev.yml up 
 # https://localhost
 # https://<your-lan-ip>
 # https://secure-vault  Requres adding "secure-vault" to /etc/hosts on client machine:
+
+# Request flow in dev:
+# browser -> nginx -> frontend for /
+# browser -> nginx -> APISIX -> Django backend for /api/
+#
+# APISIX config lives under api-gateway/conf/.
+# Sensitive auth routes ship with Redis-backed rate limits and header validation.
+# JWT expiry and device-binding remain enforced by the Django backend.
