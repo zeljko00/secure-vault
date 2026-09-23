@@ -351,6 +351,11 @@ export function HomePage() {
   }
 
   const handleStartEdit = async (secret: Secret) => {
+    if (secret.is_expired) {
+      setApiError('Expired secrets cannot be edited. Rotation is required before further changes.')
+      return
+    }
+
     if (!masterKey) {
       setApiError('Enter your master password first to edit secret content.')
       return
@@ -1284,8 +1289,9 @@ export function HomePage() {
                         <button
                           type="button"
                           onClick={() => void handleStartEdit(secret)}
-                          disabled={deletingSecretId === secret.id}
-                          className="inline-flex items-center gap-1 rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-[11px] font-medium text-slate-700 transition-colors hover:bg-slate-100"
+                          disabled={deletingSecretId === secret.id || Boolean(secret.is_expired)}
+                          title={secret.is_expired ? 'Expired secrets can not be edited.' : undefined}
+                          className="inline-flex items-center gap-1 rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-[11px] font-medium text-slate-700 transition-colors hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
                         >
                           <Pencil size={12} />
                           Edit
