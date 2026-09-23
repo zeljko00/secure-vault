@@ -129,6 +129,7 @@ services:
       - database
       - redis
       - proxy
+      - api-gateway
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost/nagios/cgi-bin/statusmap.cgi"]
       interval: 30s
