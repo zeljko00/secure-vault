@@ -32,6 +32,9 @@ export interface Secret {
   value: string
   iv?: string
   owner: User
+  last_rotated_at?: string
+  is_expired?: boolean
+  expires_at?: string
 }
 
 export interface SharedSecret {

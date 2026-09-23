@@ -11,6 +11,8 @@ from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
 from redis.exceptions import RedisError
 from django.db import connection
+from django.db import models
+from util.rotation import get_rotation_expiration_date
 
 
 from apps.user_secrets.models import Secret, SecretType, SharedSecret, AuditLog
@@ -29,6 +31,7 @@ from django.contrib.auth.hashers import Argon2PasswordHasher
 from util.authentication import UserBasicAuthentication
 
 from util.authorization import CanManageSecrets, IsAdmin, CanManageSecret, CanShareSecret, CanManageSharedSecret, CanManageSharedSecrets, CanManageReceivedSecrets
+from util.rotation import is_secret_expired
 
 def build_audit_payload(*, secret: Secret, user: User, is_shared: bool, is_honeypot: bool, details: str) -> dict:
     # Deep copy the secret to preserve it even after deletion from DB
@@ -125,6 +128,9 @@ class MySecretsView(APIView):
 
     def get(self, request):
         secrets = Secret.objects.filter(owner=request.user)
+        for secret in secrets:
+            if is_secret_expired(secret):
+                secret.value = models.BinaryField(blank=False, null=False).to_python(b"")  # Clear the value for expired secrets
         serializer = SecretSerializer(secrets, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
@@ -160,6 +166,7 @@ class SecretView(APIView):
 
     def put(self, request, id):
         secret = get_object_or_404(Secret, id=id)
+        
         request._request.audit = build_audit_payload(
             secret=secret,
             user=request.user,
@@ -167,9 +174,13 @@ class SecretView(APIView):
             is_honeypot=False,
             details="Updating secret!",
         )
+        
         self.check_object_permissions(request, secret)
         serializer = SecretSerializer(secret, data=request.data, partial=True)
         if serializer.is_valid():
+            # Check if content has changed, and if so, update last_rotated_at
+            if request.query_params.get("is_rotation", "false").lower() == "true" and serializer.validated_data.get("value") is not None and serializer.validated_data.get("value") != secret.value:
+                secret.last_rotated_at = timezone.now()
             serializer.save()
             return Response(serializer.data)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
@@ -246,6 +257,12 @@ class ShareSecretView(APIView):
         if not secret_ciphertext:
             return Response(
                 {"detail": "cipher_text is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        sharing_expires_at = serializer.validated_data.get("sharing_expires_at")
+        if sharing_expires_at is None or sharing_expires_at > get_rotation_expiration_date(secret):
+            return Response(
+                {"detail": "sharing_expires_at cannot exceed secret's rotation expiration date."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 

@@ -3,7 +3,7 @@ from rest_framework import serializers
 from apps.user_secrets.models import Secret, SharedSecret, AuditLog
 from django.utils import timezone
 from django.contrib.auth.hashers import Argon2PasswordHasher
-
+from util.rotation import get_rotation_expiration_date, is_secret_expired
 class SecretValueField(serializers.Field):
     def to_representation(self, value):
         if value is None:
@@ -22,11 +22,22 @@ class SecretValueField(serializers.Field):
 
 class SecretSerializer(serializers.ModelSerializer):
     value = SecretValueField()
+    expires_at = serializers.SerializerMethodField()
+    is_expired = serializers.SerializerMethodField()
 
     class Meta:
         model = Secret
-        fields = ["id", "type", "label", "value", "marker","iv", "owner"]
-        read_only_fields = ["id", "owner"]
+        fields = ["id", "type", "label", "value", "marker", "iv", "owner", 
+                  "last_rotated_at",
+                  "expires_at",
+                  "is_expired"]
+        read_only_fields = ["id", "owner", "last_rotated_at","expires_at","is_expired"]
+
+    def get_expires_at(self, obj):
+        return get_rotation_expiration_date(obj)
+    
+    def get_is_expired(self, obj):
+        return is_secret_expired(obj)
 
     def create(self, validated_data):
         marker = validated_data.pop("marker", None)

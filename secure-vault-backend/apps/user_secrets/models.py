@@ -18,8 +18,8 @@ class Secret(models.Model):
     value = models.BinaryField(blank=False, null=False)
     iv = models.CharField(blank=True, null=True, max_length=256)
     marker = models.CharField(blank=True, null=True, max_length=256)
-
     owner = models.ForeignKey('users.User', on_delete=models.CASCADE, related_name="secrets")
+    last_rotated_at = models.DateTimeField(default=timezone.now)
 
     def __str__(self):
         return self.label

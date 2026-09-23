@@ -2,6 +2,7 @@ from rest_framework.permissions import BasePermission
 from rest_framework.request import Request
 from rest_framework.views import APIView
 from apps.users.models import User, UserRole
+from util.rotation import is_secret_expired
 
 permissions_lookup_table = {UserRole.ADMIN :['view_honeypot', 'is_admin'] , UserRole.TEAM_LEAD : ['view_secrets', 'add_secret', 'update_secret', 'delete_secret', 'share_secret', 'delete_shared_secret', 'update_shared_secret', 'view_shared_instances', 'view_shared_secret', 'view_sharing_secrets', 'view_received_secrets', 'view_team_members'], UserRole.DEVELOPER : ['view_secrets', 'add_secret', 'update_secret', 'delete_secret', 'view_shared_secret', 'view_received_secrets']}
 
@@ -26,11 +27,15 @@ class CanManageSecrets(HasPermission):
     required_endpoint_permissions = {'GET': ['view_secrets'],'POST': ['add_secret']}
     
 class CanManageSecret(HasPermission):
-    required_endpoint_permissions = {'PUT': ['update_secret'], 'DELETE': ['delete_secret']}
+    required_endpoint_permissions = {'GET': ['view_secrets'], 'PUT': ['update_secret'], 'DELETE': ['delete_secret']}
     
     def has_object_permission(self, request, view, obj):
-        return request.user and request.user.is_authenticated and request.user.id == obj.owner.id
-    
+        allowed = request.user and request.user.is_authenticated and request.user.id == obj.owner.id
+        
+        if request.method == 'PUT':
+            allowed = allowed and not is_secret_expired(obj)
+        return allowed
+
 class CanManageSharedSecrets(HasPermission):
     required_endpoint_permissions = {'GET': ['view_sharing_secrets']}
     
@@ -66,6 +71,10 @@ class CanShareSecret(HasPermission):
 
             if not self._shares_team_with_owner(obj.owner, recipient):
                 self.message = "You can share a secret only with a user from the same team."
+                return False
+            
+            if is_secret_expired(obj):
+                self.message = "You cannot share an expired secret."
                 return False
 
             return True

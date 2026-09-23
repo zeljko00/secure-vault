@@ -7,6 +7,7 @@ import { Code2, Eye, EyeOff, FileQuestion, KeyRound, Lock, LogOut, Pencil, Plus,
 import { useNavigate } from 'react-router-dom'
 import { api } from '@/lib/api'
 import { LogoutPrivateKeyPrompt } from '@/components/ui/LogoutPrivateKeyPrompt'
+import { RotationBadge } from '@/components/ui/RotationBadge'
 import {
   decryptPrivateKeyFromBlob,
   decryptAESGCM,
@@ -91,6 +92,7 @@ export function HomePage() {
   const [revealError, setRevealError] = useState<string | null>(null)
   const [editingSecretId, setEditingSecretId] = useState<string | null>(null)
   const [isPreparingEdit, setIsPreparingEdit] = useState(false)
+  const [originalEditingValue, setOriginalEditingValue] = useState<string | null>(null)
   const [deletingSecretId, setDeletingSecretId] = useState<string | null>(null)
   const [pendingDeleteSecret, setPendingDeleteSecret] = useState<Secret | null>(null)
   const [hasIndexedDbBackup, setHasIndexedDbBackup] = useState<boolean | null>(null)
@@ -154,7 +156,7 @@ export function HomePage() {
     }
   }, [])
 
-  const fetchReceivedSharedSecrets = useCallback(async (activeUser: User, silent = false) => {
+  const fetchReceivedSharedSecrets = useCallback(async (silent = false) => {
     if (!silent) {
       setIsLoadingReceivedSharedSecrets(true)
     }
@@ -223,7 +225,7 @@ export function HomePage() {
       return
     }
 
-    void fetchReceivedSharedSecrets(user)
+    void fetchReceivedSharedSecrets()
   }, [user, fetchReceivedSharedSecrets])
 
   useEffect(() => {
@@ -265,8 +267,12 @@ export function HomePage() {
   const updateSecret = async (secretId: string, data: FormValues, key: CryptoKey) => {
     const encryptedBlob = await encryptAESGCM(key, data.value)
 
+    // Detect if content actually changed (compare plaintext, not encrypted)
+    const contentChanged = originalEditingValue !== null && originalEditingValue !== data.value
+    const endpoint = contentChanged ? `/secrets/${secretId}/?is_rotation=true` : `/secrets/${secretId}/`
+
     const res = await api.put<Secret>(
-      `/secrets/${secretId}/`,
+      endpoint,
       {
         label: data.label,
         type: data.type,
@@ -282,6 +288,7 @@ export function HomePage() {
       return next
     })
     setEditingSecretId(null)
+    setOriginalEditingValue(null)
     reset({ label: '', type: data.type, value: '' })
 
     if (user?.role === 'tl') {
@@ -363,6 +370,7 @@ export function HomePage() {
         type: secret.type,
         value: plaintext,
       })
+      setOriginalEditingValue(plaintext)
       setEditingSecretId(secret.id)
     } catch {
       setApiError('Could not decrypt this secret for editing. Check that the correct master password is loaded.')
@@ -373,6 +381,7 @@ export function HomePage() {
 
   const handleCancelEdit = () => {
     setEditingSecretId(null)
+    setOriginalEditingValue(null)
     setApiError(null)
     reset({ label: '', type: 'password', value: '' })
   }
@@ -431,6 +440,11 @@ export function HomePage() {
       return
     }
 
+    if (secret.is_expired) {
+      setRevealError('This secret has expired and must be rotated before it can be revealed.')
+      return
+    }
+
     if (!masterKey) {
       setRevealError('Enter your master password first to reveal secret content.')
       return
@@ -483,6 +497,11 @@ export function HomePage() {
 
   const handleOpenShareModal = (secret: Secret) => {
     if (!user || user.role !== 'tl') {
+      return
+    }
+
+    if (secret.is_expired) {
+      setApiError('This secret has expired and must be rotated before it can be shared.')
       return
     }
 
@@ -606,6 +625,20 @@ export function HomePage() {
       setShareError('Expiration must be in the future.')
       return
     }
+    if (!sharingExpiresAt) {
+      setIsSharing(false)
+      setShareError('Choose an expiration date and time — sharing without an expiry is not allowed.')
+      return
+    }
+
+    const secretExpiresAt = shareTargetSecret.expires_at ? new Date(shareTargetSecret.expires_at) : null
+    if (secretExpiresAt && !Number.isNaN(secretExpiresAt.getTime()) && sharingExpiresAt.getTime() > secretExpiresAt.getTime()) {
+      setIsSharing(false)
+      setShareError(
+        `Expiration cannot be later than this secret's own rotation deadline (${secretExpiresAt.toLocaleString()}).`,
+      )
+      return
+    }
 
     try {
       const results = await Promise.allSettled(
@@ -618,7 +651,7 @@ export function HomePage() {
             {
               sharing_with: recipient.id,
               cipher_text: encryptedPayload,
-              ...(sharingExpiresAt ? { sharing_expires_at: sharingExpiresAt.toISOString() } : {}),
+              sharing_expires_at: sharingExpiresAt.toISOString(),
             },
             {},
           )
@@ -626,16 +659,22 @@ export function HomePage() {
       )
 
       const successCount = results.filter((result) => result.status === 'fulfilled').length
-
       const failedCount = results.length - successCount
 
+      const backendDetail = results
+        .filter((result): result is PromiseRejectedResult => result.status === 'rejected')
+        .map((result) => (axios.isAxiosError(result.reason) ? result.reason.response?.data?.detail : null))
+        .find((detail): detail is string => typeof detail === 'string')
+
       if (successCount === 0) {
-        setShareError('Sharing failed for all selected recipients.')
+        setShareError(backendDetail ?? 'Sharing failed for all selected recipients.')
         return
       }
 
       if (failedCount > 0) {
-        setShareStatus(`Shared with ${successCount} member(s). ${failedCount} share request(s) failed.`)
+        setShareStatus(
+          `Shared with ${successCount} member(s). ${failedCount} share request(s) failed${backendDetail ? `: ${backendDetail}` : '.'}`,
+        )
       } else {
         setShareStatus(
           shareScope === 'team'
@@ -931,15 +970,25 @@ export function HomePage() {
             </div>
 
             <div className="mt-4 flex flex-col gap-1">
-              <label className="text-xs font-medium uppercase tracking-wide text-slate-500">Expires at (optional)</label>
+              <label className="text-xs font-medium uppercase tracking-wide text-slate-500">Expires at (required)</label>
               <input
                 type="datetime-local"
                 value={shareExpiresAtInput}
                 min={minShareExpiry}
+                max={
+                  shareTargetSecret.expires_at && !Number.isNaN(new Date(shareTargetSecret.expires_at).getTime())
+                    ? toDateTimeLocalValue(new Date(shareTargetSecret.expires_at))
+                    : undefined
+                }
                 onChange={(e) => setShareExpiresAtInput(e.target.value)}
                 disabled={isSharing}
                 className={inputCls}
               />
+              {shareTargetSecret.expires_at && (
+                <span className="text-[11px] text-slate-500">
+                  Cannot be shared past this secret's rotation deadline: {formatShareExpiry(shareTargetSecret.expires_at)}
+                </span>
+              )}
             </div>
 
             {shareScope === 'member' && (
@@ -1221,7 +1270,9 @@ export function HomePage() {
                         <button
                           type="button"
                           onClick={() => void handleRevealSecret(secret)}
-                          className="inline-flex items-center gap-1 rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-[11px] font-medium text-slate-700 transition-colors hover:bg-slate-100"
+                          disabled={Boolean(secret.is_expired) && !revealedSecrets[secret.id]}
+                          title={secret.is_expired ? 'Expired secrets must be rotated before they can be revealed.' : undefined}
+                          className="inline-flex items-center gap-1 rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-[11px] font-medium text-slate-700 transition-colors hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
                         >
                           {revealedSecrets[secret.id] ? <EyeOff size={12} /> : <Eye size={12} />}
                           {revealedSecrets[secret.id]
@@ -1243,7 +1294,8 @@ export function HomePage() {
                           <button
                             type="button"
                             onClick={() => void handleOpenShareModal(secret)}
-                            disabled={deletingSecretId === secret.id}
+                            disabled={deletingSecretId === secret.id || Boolean(secret.is_expired)}
+                            title={secret.is_expired ? 'Expired secrets must be rotated before they can be shared.' : undefined}
                             className="inline-flex items-center gap-1 rounded-lg border border-cyan-200 bg-cyan-50 px-2.5 py-1 text-[11px] font-medium text-cyan-700 transition-colors hover:bg-cyan-100 disabled:cursor-not-allowed disabled:opacity-60"
                           >
                             <Send size={12} />
@@ -1260,6 +1312,9 @@ export function HomePage() {
                           {deletingSecretId === secret.id ? 'Deleting...' : 'Delete'}
                         </button>
                       </div>
+                    </div>
+                    <div className="mt-2">
+                      <RotationBadge secret={secret} />
                     </div>
                     <p className="mt-2 text-[11px] font-mono text-slate-500">Encrypted blob stored</p>
                     {revealedSecrets[secret.id] && (
