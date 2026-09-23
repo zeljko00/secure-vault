@@ -423,13 +423,6 @@ export function RegisterPage() {
             </div>
 
             <div className="flex flex-col gap-2">
-              <span className="text-xs text-[var(--color-text-muted)]">Provisioning URI</span>
-              <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-panel)] px-3 py-2 font-mono text-[10px] break-all text-[var(--color-text-muted)]">
-                {registrationMfa.provisioning_uri}
-              </div>
-            </div>
-
-            <div className="flex flex-col gap-2">
               <label className="text-xs text-[var(--color-text-muted)]" htmlFor="mfa-code">
                 Verification code
               </label>
