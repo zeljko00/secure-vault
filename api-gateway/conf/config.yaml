@@ -1,9 +1,9 @@
 apisix:
   node_listen: 9080
-  enable_admin: false
+  enable_admin: false # Disable admin API
 
 deployment:
-  role: data_plane
+  role: data_plane # process traffic, not for configuration management
   role_data_plane:
     config_provider: yaml
 

@@ -113,8 +113,6 @@ export async function encryptPrivateKeyForStorage(
   }
 }
 
-// =======================================================
-
 export async function decryptAESGCM(
   key: CryptoKey,
   ciphertext: string,
